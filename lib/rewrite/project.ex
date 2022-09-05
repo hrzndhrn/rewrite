@@ -327,7 +327,13 @@ defmodule Rewrite.Project do
     def slice(project) do
       sources = project.sources |> Map.values() |> Enum.sort_by(fn source -> source.path end)
       length = length(sources)
-      {:ok, length, fn _ -> sources end}
+
+      {:ok, length,
+       fn
+         _start, 0 -> []
+         start, count when start + count == length -> Enum.drop(sources, start)
+         start, count -> sources |> Enum.drop(start) |> Enum.take(count)
+       end}
     end
 
     def reduce(project, acc, fun) do
