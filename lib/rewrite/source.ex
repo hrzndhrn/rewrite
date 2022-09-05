@@ -651,7 +651,7 @@ defmodule Rewrite.Source do
       5 4   |
       """
   '''
-  @spec diff(t(), keyword()) :: String.t()
+  @spec diff(t(), keyword()) :: iodata()
   def diff(%Source{} = source, opts \\ []) do
     TextDiff.format(code(source, 1), code(source), opts)
   end
