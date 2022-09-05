@@ -15,14 +15,11 @@ defmodule Rewrite.TextDiffTest do
       old = "del"
       new = ""
 
-      assert TextDiff.format(old, new) == [
-               [
-                 [["1", " ", " "], [[[[] | "\e[31m"], " - "] | "\e[0m"], "|"],
-                 [[], [[[[] | "\e[31m"], "del"] | "\e[0m"]],
-                 "\n"
-               ],
-               [[[" ", " ", "1"], [[[[] | "\e[32m"], " + "] | "\e[0m"], "|"], [], "\n"]
-             ]
+      assert output = to_binary(old, new)
+
+      if IO.ANSI.enabled?() do
+        assert output == "1  \e[31m - \e[0m|\e[31mdel\e[0m\n  1\e[32m + \e[0m|\n"
+      end
 
       assert to_binary(old, new, color: false) == """
              1   - |del
@@ -34,31 +31,14 @@ defmodule Rewrite.TextDiffTest do
       old = "one three two"
       new = "one two three"
 
-      assert TextDiff.format(old, new) == [
-               [
-                 [["1", " ", " "], [[[[] | "\e[31m"], " - "] | "\e[0m"], "|"],
-                 [
-                   [[[] | "one t"] | "hree"],
-                   [[[[] | "\e[31m"], ""] | "\e[0m"],
-                   [[[[] | "\e[41m"], " "] | "\e[0m"],
-                   [[[[] | "\e[31m"], "two"] | "\e[0m"]
-                 ],
-                 "\n"
-               ],
-               [
-                 [[" ", " ", "1"], [[[[] | "\e[32m"], " + "] | "\e[0m"], "|"],
-                 [
-                   [
-                     [[] | "one t"],
-                     [[[[] | "\e[32m"], "wo"] | "\e[0m"],
-                     [[[[] | "\e[42m"], " "] | "\e[0m"],
-                     [[[[] | "\e[32m"], "t"] | "\e[0m"]
-                   ]
-                   | "hree"
-                 ],
-                 "\n"
-               ]
-             ]
+      assert output = to_binary(old, new)
+
+      if IO.ANSI.enabled?() do
+        assert output == """
+               1  \e[31m - \e[0m|one three\e[31m\e[0m\e[41m \e[0m\e[31mtwo\e[0m
+                 1\e[32m + \e[0m|one t\e[32mwo\e[0m\e[42m \e[0m\e[32mt\e[0mhree
+               """
+      end
 
       assert to_binary(old, new, color: false) == """
              1   - |one three two
@@ -296,11 +276,19 @@ defmodule Rewrite.TextDiffTest do
     end
 
     test "colorized added tab" do
-      assert to_binary("ab", "a\tb") =~ "\e[42m\t"
+      assert output = to_binary("ab", "a\tb")
+
+      if IO.ANSI.enabled?() do
+        assert output =~ "\e[42m\t"
+      end
     end
 
     test "colorized deleted tab" do
-      assert to_binary("a\tb", "ab") =~ "\e[41m\t"
+      assert output = to_binary("a\tb", "ab")
+
+      if IO.ANSI.enabled?() do
+        assert output =~ "\e[41m\t"
+      end
     end
 
     test "shows added CR" do
@@ -404,6 +392,7 @@ defmodule Rewrite.TextDiffTest do
     old
     |> TextDiff.format(new, opts)
     |> IO.iodata_to_binary()
+
     # |> tap(fn result -> IO.puts(result) end)
   end
 end
