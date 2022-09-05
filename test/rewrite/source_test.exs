@@ -7,17 +7,19 @@ defmodule Rewrite.SourceTest do
 
   doctest Rewrite.Source
 
-  describe "new/1" do
+  describe "read/1" do
     test "creates new source" do
       path = "test/fixtures/source/simple.ex"
       code = File.read!(path)
 
-      source = Source.new!(path)
+      source = Source.read!(path)
 
       assert_source(source, %{
         path: path,
         code: code,
-        modules: [MyApp.Simple]
+        modules: [MyApp.Simple],
+        owner: Rewrite,
+        from: :file
       })
     end
   end
@@ -48,7 +50,7 @@ defmodule Rewrite.SourceTest do
 
   describe "update/1" do
     test "does not update source when code not changed" do
-      source = Source.new!("test/fixtures/source/simple.ex")
+      source = Source.read!("test/fixtures/source/simple.ex")
       updated = Source.update(source, :test, code: Source.zipper(source))
 
       assert Source.updated?(updated) == false
@@ -61,7 +63,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:test, code: changes)
 
       assert_source(source, %{
@@ -80,7 +82,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:test, code: zipper)
 
       assert_source(source, %{
@@ -97,7 +99,7 @@ defmodule Rewrite.SourceTest do
       changes1 = String.replace(code, "MyApp", "TheApp")
       changes2 = String.replace(changes1, "TheApp", "Application")
 
-      orig = Source.new!(path)
+      orig = Source.read!(path)
 
       source =
         orig
@@ -125,7 +127,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:foo, code: changes1)
         |> Source.update(:bar, path: changes2)
 
@@ -144,13 +146,13 @@ defmodule Rewrite.SourceTest do
   describe "path/1" do
     test "returns path" do
       path = "test/fixtures/source/simple.ex"
-      source = Source.new!(path)
+      source = Source.read!(path)
 
       assert Source.path(source) == path
     end
 
     test "returns current path" do
-      source = Source.new!("test/fixtures/source/simple.ex")
+      source = Source.read!("test/fixtures/source/simple.ex")
       path = "test/fixtures/source/new.ex"
 
       source = Source.update(source, :test, path: path)
@@ -165,7 +167,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:test, path: "a.ex")
         |> Source.update(:test, path: "b.ex")
         |> Source.update(:test, path: "c.ex")
@@ -181,7 +183,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:test, code: "a = 1")
         |> Source.update(:test, code: "b = 2")
 
@@ -198,7 +200,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:test, path: "a.ex")
         |> Source.update(:test, path: "b.ex")
 
@@ -231,7 +233,7 @@ defmodule Rewrite.SourceTest do
 
       source =
         path
-        |> Source.new!()
+        |> Source.read!()
         |> Source.update(:test, code: changes1)
         |> Source.update(:test, code: changes2)
 
@@ -243,7 +245,7 @@ defmodule Rewrite.SourceTest do
 
   describe "debug_info/2" do
     test "returns debug info" do
-      source = Source.new!("lib/rewrite/source.ex")
+      source = Source.read!("lib/rewrite/source.ex")
       dbgi = Source.debug_info(source, Rewrite.Source)
 
       check =
@@ -263,12 +265,12 @@ defmodule Rewrite.SourceTest do
 
   describe "debug_info!/2" do
     test "returns debug info" do
-      source = Source.new!("test/fixtures/source/simple.ex")
+      source = Source.read!("test/fixtures/source/simple.ex")
       assert Source.debug_info!(source, MyApp.Simple)
     end
 
     test "raises an error" do
-      source = Source.new!("test/fixtures/source/simple.ex")
+      source = Source.read!("test/fixtures/source/simple.ex")
 
       assert_raise SourceError, "Can not find debug info, reason: :non_existing", fn ->
         Source.debug_info!(source, MyApp.Unknown)

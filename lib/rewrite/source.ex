@@ -13,15 +13,18 @@ defmodule Rewrite.Source do
   alias Rewrite.Issue
   alias Rewrite.Source
   alias Rewrite.SourceError
+  alias Rewrite.TextDiff
   alias Sourceror.Zipper
 
   defstruct [
     :id,
+    :from,
     :path,
     :code,
     :ast,
     :hash,
     :modules,
+    :owner,
     updates: [],
     issues: []
   ]
@@ -38,6 +41,8 @@ defmodule Rewrite.Source do
 
   @type id :: String.t()
 
+  @type from :: :file | :ast | :string
+
   @type t :: %Source{
           id: id(),
           path: Path.t() | nil,
@@ -46,7 +51,9 @@ defmodule Rewrite.Source do
           hash: String.t(),
           modules: [module()],
           updates: [{kind(), by(), String.t()}],
-          issues: term()
+          issues: term(),
+          from: from(),
+          owner: module()
         }
 
   @doc ~S'''
@@ -54,7 +61,7 @@ defmodule Rewrite.Source do
 
   ## Examples
 
-      iex> source = Source.new!("test/fixtures/source/simple.ex")
+      iex> source = Source.read!("test/fixtures/source/simple.ex")
       iex> source.modules
       [MyApp.Simple]
       iex> source.code
@@ -66,9 +73,36 @@ defmodule Rewrite.Source do
       end
       """
   '''
-  @spec new!(Path.t()) :: t()
-  def new!(path) do
-    path |> File.read!() |> from_string(path)
+  @spec read!(Path.t()) :: t()
+  def read!(path) do
+    code = File.read!(path)
+    new(code: code, path: path, from: :file)
+  end
+
+  defp new(fields) do
+    {code, ast} =
+      case Keyword.get(fields, :ast) do
+        nil ->
+          code = Keyword.fetch!(fields, :code)
+          {code, Sourceror.parse_string!(code)}
+
+        ast ->
+          {Sourceror.to_string(ast), ast}
+      end
+
+    path = Keyword.get(fields, :path, nil)
+
+    struct!(
+      Source,
+      id: make_ref(),
+      from: Keyword.fetch!(fields, :from),
+      path: Keyword.get(fields, :path, nil),
+      code: code,
+      ast: ast,
+      hash: hash(path, code),
+      modules: get_modules(ast),
+      owner: Keyword.get(fields, :owner, Rewrite)
+    )
   end
 
   @doc """
@@ -82,20 +116,33 @@ defmodule Rewrite.Source do
       iex> source.code
       "a + b"
   """
-  @spec from_string(String.t(), Path.t() | nil) :: t()
-  def from_string(string, path \\ nil) do
-    ast = Sourceror.parse_string!(string)
-
-    struct!(
-      Source,
-      id: make_ref(),
-      path: path,
-      code: string,
-      ast: ast,
-      hash: hash(path, string),
-      modules: get_modules(ast)
-    )
+  @spec from_string(String.t(), nil | Path.t(), module()) :: t()
+  def from_string(string, path \\ nil, owner \\ Rewrite) do
+    new(code: string, path: path, owner: owner, from: :string)
   end
+
+  # @doc """
+  # Creates a new `%Source{}` from the given `string` and adds an update with the
+  # given `path` and `by`.
+
+  # This is a convenience function to create a new source in a task. The function
+  # is equivalent to:
+  # ```elixir
+  # string |> from_string() |> update(by, path: path)
+  # ```
+
+  # ## Examples
+
+  #     iex> source = Source.from_string(":foo", "scripts/foo.exs", Recode)
+  #     iex> Source.updated?(source)
+  #     true
+  # """
+  # @spec from_string(String.t(), Path.t(), module()) :: t()
+  # def from_string(string, path, by) do
+  #   string
+  #   |> do_from_string()
+  #   |> update(by, path: path)
+  # end
 
   @doc """
   Marks the given `source` as deleted.
@@ -130,7 +177,7 @@ defmodule Rewrite.Source do
 
       iex> path = "tmp/foo.ex"
       iex> File.write(path, ":foo")
-      iex> source = path |> Source.new!() |> Source.update(:test, code: ":bar")
+      iex> source = path |> Source.read!() |> Source.update(:test, code: ":bar")
       iex> Source.save(source)
       :ok
       iex> File.read(path)
@@ -147,7 +194,7 @@ defmodule Rewrite.Source do
 
       iex> path = "tmp/ping.ex"
       iex> File.write(path, ":ping")
-      iex> source = path |> Source.new!()
+      iex> source = path |> Source.read!()
       iex> new_path = "tmp/pong.ex"
       iex> source |> Source.update(:test, path: new_path) |> Source.save()
       :ok
@@ -293,6 +340,28 @@ defmodule Rewrite.Source do
       _update -> false
     end)
   end
+
+  @doc """
+  Returns `true` if the `%Source{}` was created.
+
+  Created means here that a new file is written when saving.
+
+  ## Examples
+
+      iex> source = Source.read!("test/fixtures/source/simple.ex")
+      ...> Source.created?(source)
+      false
+
+      iex> source = Source.from_string(":foo")
+      ...> Source.created?(source)
+      true
+
+      iex> source = Source.from_string(":foo", "test/fixtures/new.ex", Test)
+      ...> Source.created?(source)
+      true
+  """
+  @spec created?(t()) :: boolean
+  def created?(%Source{from: from}), do: from != :file
 
   @doc """
   Returns `true` if the `source` has issues for the given `version`.
@@ -561,6 +630,40 @@ defmodule Rewrite.Source do
       true -> BeamFile.debug_info(module)
       false -> code |> compile_module(path, module) |> BeamFile.debug_info()
     end
+  end
+
+  @doc ~S'''
+  Returns iodata showing all diffs of the given `source`.
+
+  ## Exampels
+
+      iex> code = """
+      ...> def foo( x ) do
+      ...>   {:x,
+      ...>     x}
+      ...> end
+      ...> """
+      iex> formatted = code |> Code.format_string!() |> IO.iodata_to_binary()
+      iex> source = Source.from_string(code)
+      iex> source |> Source.diff() |> IO.iodata_to_binary()
+      ""
+      iex> source
+      ...> |> Source.update(Test, code: formatted)
+      ...> |> Source.diff(color: false)
+      ...> |> IO.iodata_to_binary()
+      """
+      1   - |def foo( x ) do
+      2   - |  {:x,
+      3   - |    x}
+        1 + |def foo(x) do
+        2 + |  {:x, x}
+      4 3   |end
+      5 4   |
+      """
+  '''
+  @spec diff(t(), keyword()) :: String.t()
+  def diff(%Source{} = source, opts \\ []) do
+    TextDiff.format(code(source, 1), code(source), opts)
   end
 
   defp get_modules(code) when is_binary(code) do

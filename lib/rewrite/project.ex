@@ -1,36 +1,32 @@
 defmodule Rewrite.Project do
   @moduledoc """
-  The `%Project{}` contains all `Rewrite.Sources` of a project.
+  The `%Project{}` contains all `%Rewrite.Sources{}` of a project.
   """
 
   alias Rewrite.Project
   alias Rewrite.ProjectError
   alias Rewrite.Source
 
-  defstruct sources: %{}, paths: %{}, modules: %{}, inputs: []
+  defstruct sources: %{}
 
   @type id :: reference()
 
-  @type t :: %Project{
-          sources: %{id() => Source.t()},
-          paths: %{Path.t() => id()},
-          inputs: [Path.t()]
-        }
+  @type t :: %Project{sources: %{id() => Source.t()}}
 
   @doc """
   Creates a `%Project{}` from the given `inputs`.
   """
-  @spec new(Path.t() | [Path.t()]) :: t()
-  def new(inputs) do
+  @spec read!(Path.t() | [Path.t()]) :: t()
+  def read!(inputs) do
     inputs = inputs |> List.wrap() |> Enum.flat_map(&Path.wildcard/1)
 
-    {sources, paths} =
-      Enum.reduce(inputs, {%{}, %{}}, fn path, {sources, paths} ->
-        source = Source.new!(path)
-        update_internals({sources, paths}, source)
+    sources =
+      Enum.reduce(inputs, %{}, fn path, sources ->
+        source = Source.read!(path)
+        Map.put(sources, source.id, source)
       end)
 
-    struct!(Project, sources: sources, paths: paths, inputs: inputs)
+    struct!(Project, sources: sources)
   end
 
   @doc ~S"""
@@ -38,19 +34,31 @@ defmodule Rewrite.Project do
   """
   @spec from_sources([Source.t()]) :: Project.t()
   def from_sources(sources) do
-    {sources, paths} =
-      Enum.reduce(sources, {%{}, %{}}, fn source, {sources, paths} ->
-        update_internals({sources, paths}, source)
+    sources =
+      Enum.reduce(sources, %{}, fn source, sources ->
+        Map.put(sources, source.id, source)
       end)
 
-    struct!(Project, sources: sources, paths: paths, inputs: nil)
+    struct!(Project, sources: sources)
+  end
+
+  @doc """
+  Returns all sources sorted by path.
+  """
+  @spec sources(t()) :: [Source.t()]
+  def sources(%Project{sources: sources}) do
+    sources
+    |> Map.values()
+    |> Enum.sort_by(fn source -> source.path end)
   end
 
   @doc ~S'''
-  Returns a `%Source{}` for the given `key`.
+  Returns a list of `%Source{}` for the given `path`.
 
-  The key could be a path or an id. For path keys, the most recent file is
-  returned.
+  It is possible that the project cotains multiple sources with the same path.
+  The function `conflicts/1` returns all conflicts in a project and the function
+  `save/2` returns an error tuple when trying to save a project with conflicts.
+  It is up to the user of `rewrite` to handle conflicts.
 
   ## Examples
 
@@ -62,56 +70,56 @@ defmodule Rewrite.Project do
       ...>    "my_app/mode.ex"
       ...> )
       iex> project = Project.from_sources([source])
-      iex> Project.source(project, "my_app/mode.ex")
-      {:ok, source}
-      iex> Project.source(project, source.id)
-      {:ok, source}
-      iex> Project.source(project, "foo")
-      :error
+      iex> Project.sources(project, "my_app/mode.ex")
+      [source]
+      iex> Project.sources(project, "foo")
+      []
 
-      iex> source = Source.from_string(":a", "a.ex")
-      iex> project = Project.from_sources(
-      ...>   [source, Source.from_string(":b", "b.ex")]
-      ...> )
-      iex> update = Source.update(source, :test, path: "b.ex")
+      iex> a = Source.from_string(":a", "a.ex")
+      iex> b = Source.from_string(":b", "b.ex")
+      iex> project = Project.from_sources([a, b])
+      iex> update = Source.update(a, :test, path: "b.ex")
       iex> project = Project.update(project, update)
-      iex> Project.source(project, "a.ex")
-      {:ok, update}
-      iex> Project.source(project, "b.ex")
-      {:ok, update}
+      iex> Project.sources(project, "a.ex")
+      []
+      iex> Project.sources(project, "b.ex")
+      [b, update]
   '''
-  @spec source(t(), key) :: {:ok, Source.t()} | :error
-        when key: id() | Path.t()
-  def source(%Project{sources: sources}, key) when is_reference(key) do
-    Map.fetch(sources, key)
+  @spec sources(t(), Path.t()) :: [Source.t()]
+  def sources(%Project{sources: sources}, path) do
+    Enum.reduce(sources, [], fn {_id, source}, acc ->
+      case source.path == path do
+        true -> [source | acc]
+        false -> acc
+      end
+    end)
   end
 
-  def source(%Project{sources: sources, paths: paths}, key) when is_binary(key) do
-    with {:ok, id} <- Map.fetch(paths, key) do
-      Map.fetch(sources, id)
+  @doc """
+  Returns the `%Source{}` for the given `path`.
+
+  Returns an `:ok` tuple with the `%Source{}` or an `:error` when the source is
+  not available or not
+  Returns an `:ok` tuple with the found source, if no or multiple sources are
+  available an `:error` is returned.
+  """
+  @spec source(t(), Path.t()) :: {:ok, Source.t()} | :error
+  def source(%Project{} = project, path) do
+    case sources(project, path) do
+      [source] -> {:ok, source}
+      _else -> :error
     end
   end
 
   @doc """
-  Same as `source/2` but raises on error.
+  Same as `source/2` but raises a `ProjectError`.
   """
-  @spec source!(t(), key) :: Source.t()
-        when key: id() | Path.t() | module()
-  def source!(%Project{} = project, key) do
-    case source(project, key) do
+  @spec source!(t(), Path.t()) :: Source.t()
+  def source!(%Project{} = project, path) do
+    case source(project, path) do
       {:ok, source} -> source
-      :error -> raise ProjectError, "No source for #{inspect(key)} found."
+      :error -> raise ProjectError, "No source for #{inspect(path)} found."
     end
-  end
-
-  @doc """
-  Returns all sources sorted by path.
-  """
-  @spec sources(t()) :: [Source.t()]
-  def sources(%Project{sources: sources}) do
-    sources
-    |> Map.values()
-    |> Enum.sort(Source)
   end
 
   @doc """
@@ -121,14 +129,14 @@ defmodule Rewrite.Project do
   otherwise the `source` will be added.
   """
   @spec update(t(), Source.t() | [Source.t()]) :: t()
-  def update(%Project{sources: sources, paths: paths} = project, %Source{} = source) do
+  def update(%Project{sources: sources} = project, %Source{} = source) do
     case update?(project, source) do
       false ->
         project
 
       true ->
-        {sources, paths} = update_internals({sources, paths}, source)
-        %Project{project | sources: sources, paths: paths}
+        sources = Map.put(sources, source.id, source)
+        %Project{project | sources: sources}
     end
   end
 
@@ -141,13 +149,6 @@ defmodule Rewrite.Project do
       {:ok, legacy} -> legacy != source
       :error -> true
     end
-  end
-
-  defp update_internals({sources, paths}, source) do
-    sources = Map.put(sources, source.id, source)
-    paths = Map.put(paths, source.path, source.id)
-
-    {sources, paths}
   end
 
   @doc """
@@ -235,12 +236,12 @@ defmodule Rewrite.Project do
   @spec count(t, type :: :sources | :scripts) :: non_neg_integer
   def count(%Project{sources: sources}, :sources), do: map_size(sources)
 
-  def count(%Project{paths: paths}, :scripts) do
-    paths
-    |> Map.keys()
+  def count(%Project{sources: sources}, :scripts) do
+    sources
+    |> Map.values()
     |> Enum.filter(fn
-      nil -> false
-      path -> String.ends_with?(path, ".exs")
+      %{path: nil} -> false
+      %{path: path} -> String.ends_with?(path, ".exs")
     end)
     |> Enum.count()
   end

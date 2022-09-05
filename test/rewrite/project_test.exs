@@ -6,35 +6,47 @@ defmodule Rewrite.ProjectTest do
   alias Rewrite.ProjectError
   alias Rewrite.Source
 
-  doctest Rewrite.Project
+  doctest Rewrite.Project, tags: :doctest
 
-  describe "new/1" do
+  describe "read!/1" do
     test "creates a project from one file" do
       inputs = ["test/fixtures/source/simple.ex"]
-      assert project = Project.new(inputs)
-      assert project.inputs == inputs
-      assert Map.keys(project.paths) == inputs
+      assert project = Project.read!(inputs)
       assert Enum.count(project.sources) == 1
+    end
+  end
+
+  describe "sources/2" do
+    test "returns the source struct for a path" do
+      path = "test/fixtures/source/simple.ex"
+      project = Project.read!([path])
+      assert [%Source{}] = Project.sources(project, path)
     end
   end
 
   describe "source/2" do
     test "returns the source struct for a path" do
       path = "test/fixtures/source/simple.ex"
-      project = Project.new([path])
+      project = Project.read!([path])
       assert {:ok, %Source{}} = Project.source(project, path)
+    end
+
+    test "raises an :error for an invalid path" do
+      project = Project.read!(["test/fixtures/source/simple.ex"])
+
+      assert Project.source(project, "foo/bar.ex") == :error
     end
   end
 
   describe "source!/2" do
     test "returns the source struct for a path" do
       path = "test/fixtures/source/simple.ex"
-      project = Project.new([path])
+      project = Project.read!([path])
       assert %Source{} = Project.source!(project, path)
     end
 
     test "raises an error for an invalid path" do
-      project = Project.new(["test/fixtures/source/simple.ex"])
+      project = Project.read!(["test/fixtures/source/simple.ex"])
 
       assert_raise ProjectError, ~s|No source for "foo/bar.ex" found.|, fn ->
         Project.source!(project, "foo/bar.ex")
@@ -46,7 +58,7 @@ defmodule Rewrite.ProjectTest do
     test "maps a project without any changes" do
       inputs = ["test/fixtures/source/simple.ex"]
 
-      project = Project.new(inputs)
+      project = Project.read!(inputs)
 
       mapped = Project.map(project, fn source -> source end)
 
@@ -56,15 +68,13 @@ defmodule Rewrite.ProjectTest do
     test "maps a project" do
       inputs = ["test/fixtures/source/simple.ex"]
 
-      project = Project.new(inputs)
+      project = Project.read!(inputs)
 
       mapped =
         Project.map(project, fn source ->
           Source.update(source, :test, path: "new/path/simple.ex")
         end)
 
-      assert project.inputs == mapped.inputs
-      assert project.modules == mapped.modules
       assert project != mapped
     end
   end
@@ -73,7 +83,7 @@ defmodule Rewrite.ProjectTest do
     test "maps a project without any changes" do
       inputs = ["test/fixtures/source/simple.ex"]
 
-      project = Project.new(inputs)
+      project = Project.read!(inputs)
 
       mapped = Enum.map(project, fn source -> source end)
 
@@ -84,7 +94,7 @@ defmodule Rewrite.ProjectTest do
     test "maps a project" do
       inputs = ["test/fixtures/source/simple.ex"]
 
-      project = Project.new(inputs)
+      project = Project.read!(inputs)
 
       mapped =
         Enum.map(project, fn source ->
@@ -93,8 +103,6 @@ defmodule Rewrite.ProjectTest do
 
       mapped = Project.update(project, mapped)
 
-      assert project.inputs == mapped.inputs
-      assert project.modules == mapped.modules
       assert project != mapped
     end
   end
@@ -285,7 +293,7 @@ defmodule Rewrite.ProjectTest do
 
       project =
         Project.from_sources([
-          foo |> Source.new!() |> Source.update(:test, path: bar)
+          foo |> Source.read!() |> Source.update(:test, path: bar)
         ])
 
       assert Project.save(project) == :ok
@@ -300,7 +308,7 @@ defmodule Rewrite.ProjectTest do
 
       project =
         Project.from_sources([
-          foo |> Source.new!() |> Source.update(:test, path: bar)
+          foo |> Source.read!() |> Source.update(:test, path: bar)
         ])
 
       assert Project.save(project, [bar]) == :ok
@@ -313,7 +321,7 @@ defmodule Rewrite.ProjectTest do
 
       project =
         Project.from_sources([
-          path |> Source.new!() |> Source.del()
+          path |> Source.read!() |> Source.del()
         ])
 
       assert Project.save(project, ["bar.ex"]) == :ok
@@ -326,8 +334,8 @@ defmodule Rewrite.ProjectTest do
 
       project =
         Project.from_sources([
-          path |> Source.new!() |> Source.update(:test, code: ":new"),
-          path |> Source.new!() |> Source.update(:test, code: ":new")
+          path |> Source.read!() |> Source.update(:test, code: ":new"),
+          path |> Source.read!() |> Source.update(:test, code: ":new")
         ])
 
       assert Project.save(project) == {:error, :conflicts}
@@ -341,7 +349,7 @@ defmodule Rewrite.ProjectTest do
 
       project =
         Project.from_sources([
-          path |> Source.new!() |> Source.update(:test, code: ":new")
+          path |> Source.read!() |> Source.update(:test, code: ":new")
         ])
 
       assert Project.save(project) == {:error, [{path, :eacces}]}
@@ -357,7 +365,7 @@ defmodule Rewrite.ProjectTest do
       path = Path.join(tmp_dir, "foo.ex")
       File.write!(path, ":bar")
 
-      project = Project.from_sources([Source.new!(path)])
+      project = Project.from_sources([Source.read!(path)])
 
       assert Project.save(project) == :ok
     end

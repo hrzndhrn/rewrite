@@ -29,7 +29,7 @@ defmodule Rewrite.MixProject do
   end
 
   defp description do
-    "A higher level API to rewrite sources in an Elixir project with sourceror."
+    "An API for rewriting sources in an Elixir project. Powered by sourceror."
   end
 
   defp docs do
