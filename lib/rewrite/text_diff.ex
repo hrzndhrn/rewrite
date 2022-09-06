@@ -79,8 +79,8 @@ defmodule Rewrite.TextDiff do
   ## Options
 
     * `after` - the count of lines printed after each change. Defaults to `2`.
-    * `before` - the count of lines printed befor each change. Defaults to `2`.
-    * `color` - enables color in the output. Defautls to `truel.`
+    * `before` - the count of lines printed before each change. Defaults to `2`.
+    * `color` - enables color in the output. Defaults to `truel.`
     * `line` - the line number of the first line. Defaults to `1`.
 
   ## Examples

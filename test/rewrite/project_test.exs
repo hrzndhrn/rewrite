@@ -236,7 +236,7 @@ defmodule Rewrite.ProjectTest do
       assert Project.count(project, :scripts) == 1
     end
 
-    test "counts soucres with `path: nil` as source" do
+    test "counts sources with `path: nil` as source" do
       project = Project.from_sources([Source.from_string(":a")])
 
       assert Project.count(project, :sources) == 1

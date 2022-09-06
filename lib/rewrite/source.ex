@@ -625,7 +625,7 @@ defmodule Rewrite.Source do
   @doc ~S'''
   Returns iodata showing all diffs of the given `source`.
 
-  ## Exampels
+  ## Examples
 
       iex> code = """
       ...> def foo( x ) do
