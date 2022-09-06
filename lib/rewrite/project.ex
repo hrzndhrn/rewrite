@@ -55,7 +55,7 @@ defmodule Rewrite.Project do
   @doc ~S'''
   Returns a list of `%Source{}` for the given `path`.
 
-  It is possible that the project cotains multiple sources with the same path.
+  It is possible that the project contains multiple sources with the same path.
   The function `conflicts/1` returns all conflicts in a project and the function
   `save/2` returns an error tuple when trying to save a project with conflicts.
   It is up to the user of `rewrite` to handle conflicts.
