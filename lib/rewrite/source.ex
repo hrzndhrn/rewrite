@@ -10,7 +10,6 @@ defmodule Rewrite.Source do
   """
 
   alias Rewrite.DotFormatter
-  alias Rewrite.Issue
   alias Rewrite.Source
   alias Rewrite.SourceError
   alias Rewrite.TextDiff
@@ -43,6 +42,8 @@ defmodule Rewrite.Source do
 
   @type from :: :file | :ast | :string
 
+  @type issue :: term()
+
   @type t :: %Source{
           id: id(),
           path: Path.t() | nil,
@@ -51,7 +52,7 @@ defmodule Rewrite.Source do
           hash: String.t(),
           modules: [module()],
           updates: [{kind(), by(), String.t()}],
-          issues: term(),
+          issues: [issue()],
           from: from(),
           owner: module()
         }
@@ -239,7 +240,7 @@ defmodule Rewrite.Source do
   @doc """
   Adds the given `issues` to the `source`.
   """
-  @spec add_issues(t(), [Issue.t()]) :: t()
+  @spec add_issues(t(), [issue()]) :: t()
   def add_issues(%Source{issues: list} = source, issues) do
     version = version(source)
     issues = issues |> Enum.map(fn issue -> {version, issue} end) |> Enum.concat(list)
@@ -250,8 +251,8 @@ defmodule Rewrite.Source do
   @doc """
   Adds the given `issue` to the `source`.
   """
-  @spec add_issue(t(), Issue.t()) :: t()
-  def add_issue(%Source{} = source, %Issue{} = issue), do: add_issues(source, [issue])
+  @spec add_issue(t(), issue()) :: t()
+  def add_issue(%Source{} = source, issue), do: add_issues(source, [issue])
 
   @doc ~S"""
   Updates the `code` or the `path` of a `source`.
@@ -371,13 +372,12 @@ defmodule Rewrite.Source do
 
   ## Examples
 
-      iex> alias Rewrite.Issue
       iex> source =
       ...>   "a + b"
       ...>   |> Source.from_string("some/where/plus.exs")
-      ...>   |> Source.add_issue(Issue.new(:test, "no comment", line: 1))
+      ...>   |> Source.add_issue(%{issue: :foo})
       ...>   |> Source.update(:example, path: "some/where/else/plus.exs")
-      ...>   |> Source.add_issue(Issue.new(:test, "no comment", line: 1))
+      ...>   |> Source.add_issue(%{issue: :bar})
       iex> Source.has_issues?(source)
       true
       iex> Source.has_issues?(source, 1)
