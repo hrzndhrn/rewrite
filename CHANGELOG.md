@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.1.0 - dev
+## 0.1.1 - 2022/09/07
+
++ Update `Issue.new/4`.
+
+## 0.1.0 - 2022/09/05
 
 + The very first version.
 
