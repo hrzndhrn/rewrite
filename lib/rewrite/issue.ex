@@ -35,7 +35,9 @@ defmodule Rewrite.Issue do
     struct!(Issue, reporter: reporter, message: message, line: line, column: column, meta: meta)
   end
 
-  def new(reporter, meta, [], nil) do
-    struct!(Issue, reporter: reporter, meta: meta)
+  def new(reporter, meta, info, nil) do
+    line = Keyword.get(info, :line)
+    column = Keyword.get(info, :column)
+    struct!(Issue, reporter: reporter, line: line, column: column, meta: meta)
   end
 end
