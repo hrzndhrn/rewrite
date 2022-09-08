@@ -66,7 +66,6 @@ defmodule Rewrite.MixProject do
 
   defp deps do
     [
-      {:beam_file, "~> 0.3"},
       {:sourceror, "~> 0.11"},
       # dev/test
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},

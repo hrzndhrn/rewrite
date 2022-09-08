@@ -23,6 +23,45 @@ defmodule Rewrite.ProjectTest do
     end
   end
 
+  describe "sources_by_module/2" do
+    test "returns the source struct for a module" do
+      project = Project.read!("test/fixtures/source/simple.ex")
+      assert [%Source{}] = Project.sources_by_module(project, MyApp.Simple)
+    end
+
+    test "returns an empty list for an unknown module" do
+      project = Project.read!("test/fixtures/source/simple.ex")
+      assert Project.sources_by_module(project, MyApp.Missing) == []
+    end
+  end
+
+  describe "source_by_module/2" do
+    test "returns the source struct for a module" do
+      project = Project.read!("test/fixtures/source/simple.ex")
+      assert {:ok, %Source{}} = Project.source_by_module(project, MyApp.Simple)
+    end
+
+    test "returns an empty list for an unknown module" do
+      project = Project.read!("test/fixtures/source/simple.ex")
+      assert Project.source_by_module(project, MyApp.Missing) == :error
+    end
+  end
+
+  describe "source_by_module!/2" do
+    test "returns the source struct for a module" do
+      project = Project.read!("test/fixtures/source/simple.ex")
+      assert %Source{} = Project.source_by_module!(project, MyApp.Simple)
+    end
+
+    test "returns an empty list for an unknown module" do
+      project = Project.read!("test/fixtures/source/simple.ex")
+
+      assert_raise ProjectError, fn ->
+        Project.source_by_module!(project, MyApp.Missing)
+      end
+    end
+  end
+
   describe "source/2" do
     test "returns the source struct for a path" do
       path = "test/fixtures/source/simple.ex"

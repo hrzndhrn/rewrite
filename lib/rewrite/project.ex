@@ -96,10 +96,8 @@ defmodule Rewrite.Project do
   end
 
   @doc """
-  Returns the `%Source{}` for the given `path`.
+  Returns the `%Rewrite.Source{}` for the given `path`.
 
-  Returns an `:ok` tuple with the `%Source{}` or an `:error` when the source is
-  not available or not
   Returns an `:ok` tuple with the found source, if no or multiple sources are
   available an `:error` is returned.
   """
@@ -119,6 +117,45 @@ defmodule Rewrite.Project do
     case source(project, path) do
       {:ok, source} -> source
       :error -> raise ProjectError, "No source for #{inspect(path)} found."
+    end
+  end
+
+  @doc """
+  Returns a list of `%Rewrite.Source{}` with an implementation for the given
+  `module`.
+  """
+  @spec sources_by_module(t(), module()) :: [Source.t()]
+  def sources_by_module(%Project{sources: sources}, module) do
+    Enum.reduce(sources, [], fn {_id, source}, acc ->
+      case module in source.modules do
+        true -> [source | acc]
+        false -> acc
+      end
+    end)
+  end
+
+  @doc """
+  Returns the `%Rewrite.source{}` for the given `module`.
+
+  Returns an `:ok` tuple with the found source, if no or multiple sources are
+  available an `:error` is returned.
+  """
+  @spec source_by_module(t(), module()) :: {:ok, Source.t()} | :error
+  def source_by_module(%Project{} = project, module) do
+    case sources_by_module(project, module) do
+      [source] -> {:ok, source}
+      _else -> :error
+    end
+  end
+
+  @doc """
+  Same as `source_by_module/2` but raises a `ProjectError`.
+  """
+  @spec source_by_module!(t(), Path.t()) :: Source.t()
+  def source_by_module!(%Project{} = project, module) do
+    case source_by_module(project, module) do
+      {:ok, source} -> source
+      :error -> raise ProjectError, "No source for #{inspect(module)} found."
     end
   end
 

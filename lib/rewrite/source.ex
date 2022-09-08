@@ -11,7 +11,6 @@ defmodule Rewrite.Source do
 
   alias Rewrite.DotFormatter
   alias Rewrite.Source
-  alias Rewrite.SourceError
   alias Rewrite.TextDiff
   alias Sourceror.Zipper
 
@@ -575,54 +574,6 @@ defmodule Rewrite.Source do
   end
 
   @doc ~S'''
-  Returns the debug info for the give `source` and `module`.
-
-  Uses the current `code` of the `source`.
-
-  ## Examples
-
-      iex> bar =
-      ...>   """
-      ...>   defmodule Bar do
-      ...>      def bar, do: :bar
-      ...>   end
-      ...>   """
-      iex> {:ok, dbg} = bar |> Source.from_string() |> Source.debug_info(Bar)
-      iex> dbg.module
-      Bar
-      iex> dbg.relative_file
-      "nofile"
-  '''
-  @spec debug_info(t(), module()) :: {:ok, term()} | {:error, term()}
-  def debug_info(%Source{modules: modules, code: code, path: path} = source, module) do
-    case module in modules do
-      true -> do_debug_info(module, code, path, updated?(source))
-      false -> {:error, :non_existing}
-    end
-  end
-
-  @doc """
-  Same as `debug_info/1` but raises on error.
-  """
-  @spec debug_info!(t(), module()) :: term()
-  def debug_info!(%Source{} = source, module) do
-    case debug_info(source, module) do
-      {:ok, debug_info} ->
-        debug_info
-
-      {:error, reason} ->
-        raise SourceError, "Can not find debug info, reason: #{inspect(reason)}"
-    end
-  end
-
-  defp do_debug_info(module, code, path, updated?) do
-    case not updated? and BeamFile.exists?(module) do
-      true -> BeamFile.debug_info(module)
-      false -> code |> compile_module(path, module) |> BeamFile.debug_info()
-    end
-  end
-
-  @doc ~S'''
   Returns iodata showing all diffs of the given `source`.
 
   ## Examples
@@ -702,10 +653,6 @@ defmodule Rewrite.Source do
 
   defp update_updates(%Source{updates: updates} = source, update) do
     %{source | updates: [update | updates]}
-  end
-
-  defp compile_module(code, path, module) do
-    code |> Code.compile_string(path || "nofile") |> Keyword.fetch!(module)
   end
 
   defp not_empty?(enum), do: not Enum.empty?(enum)
