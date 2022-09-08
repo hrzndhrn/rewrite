@@ -279,16 +279,9 @@ defmodule Rewrite.Source do
       iex> source.updates
       [{:code, :example, "a = 42"}]
   """
-  @spec update(t(), by(), [code: String.t() | Zipper.zipper()] | [path: Path.t()]) :: t()
-  def update(%Source{ast: ast} = source, _by, [{:code, {ast, _meta}}]), do: source
-
-  def update(%Source{} = source, by, [{:code, {ast, _meta}}]) do
-    code = ast |> Sourceror.to_string(DotFormatter.opts()) |> newline()
-    update(source, by, code: code)
-  end
-
+  @spec update(t(), by(), [code: String.t()] | [ast: Macro.t()] | [path: Path.t()]) :: t()
   def update(%Source{} = source, by, [{key, value}])
-      when is_atom(by) and key in [:code, :path] and is_binary(value) do
+      when is_atom(by) and key in [:ast, :code, :path] do
     legacy = Map.fetch!(source, key)
 
     value = if key == :code, do: newline(value), else: value
@@ -298,15 +291,38 @@ defmodule Rewrite.Source do
         source
 
       false ->
-        update = {key, by, legacy}
+        update =
+          case key do
+            :ast -> {:code, by, source.code}
+            _else -> {key, by, legacy}
+          end
 
         source
-        |> put(key, value)
+        |> do_update(key, value)
         |> update_updates(update)
-        |> update_modules(key, value)
+        |> update_modules(key)
         |> update_hash()
     end
   end
+
+  defp do_update(source, :code, code) do
+    ast = Sourceror.parse_string!(code)
+    %Source{source | ast: ast, code: code}
+  end
+
+  defp do_update(source, :ast, ast) do
+    code = ast |> Sourceror.to_string(DotFormatter.opts()) |> newline()
+    %Source{source | ast: ast, code: code}
+  end
+
+  defp do_update(source, :path, path) do
+    %Source{source | path: path}
+  end
+
+  defp update_modules(source, key) when key in [:ast, :code],
+    do: %{source | modules: get_modules(source.code)}
+
+  defp update_modules(source, _key), do: source
 
   @doc """
   Returns `true` if the source was updated.
@@ -545,12 +561,6 @@ defmodule Rewrite.Source do
   def ast(%Source{ast: ast}), do: ast
 
   @doc """
-  Returns a `Sourceror.Zipper` with the AST for the given `%Source`.
-  """
-  @spec zipper(t()) :: {:ok, Zipper.zipper()} | {:error, term()}
-  def zipper(%Source{ast: ast}), do: Zipper.zip(ast)
-
-  @doc """
   Compares the `path` values of the given sources.
 
   ## Examples
@@ -628,10 +638,6 @@ defmodule Rewrite.Source do
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
-
-  defp update_modules(source, :code, code), do: %{source | modules: get_modules(code)}
-
-  defp update_modules(source, _key, _value), do: source
 
   defp hash(nil, code), do: :crypto.hash(:md5, code)
 

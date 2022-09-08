@@ -47,10 +47,10 @@ defmodule Rewrite.SourceTest do
     end
   end
 
-  describe "update/1" do
+  describe "update/3" do
     test "does not update source when code not changed" do
       source = Source.read!("test/fixtures/source/simple.ex")
-      updated = Source.update(source, :test, code: Source.zipper(source))
+      updated = Source.update(source, :test, code: Source.code(source))
 
       assert Source.updated?(updated) == false
     end
@@ -69,11 +69,12 @@ defmodule Rewrite.SourceTest do
         path: path,
         code: changes,
         modules: [TheApp.Simple],
-        updates: [{:code, :test, code}]
+        updates: [{:code, :test, code}],
+        ast: Sourceror.parse_string!(changes)
       })
     end
 
-    test "updates the code with a zipper" do
+    test "updates the code with an AST" do
       path = "test/fixtures/source/simple.ex"
       code = File.read!(path)
       changes = String.replace(code, "MyApp", "TheApp")
@@ -82,13 +83,14 @@ defmodule Rewrite.SourceTest do
       source =
         path
         |> Source.read!()
-        |> Source.update(:test, code: zipper)
+        |> Source.update(:test, ast: Zipper.root(zipper))
 
       assert_source(source, %{
         path: path,
         code: changes,
         modules: [TheApp.Simple],
-        updates: [{:code, :test, code}]
+        updates: [{:code, :test, code}],
+        ast: Sourceror.parse_string!(changes)
       })
     end
 
@@ -246,11 +248,15 @@ defmodule Rewrite.SourceTest do
 
   defp assert_source(%Source{} = source, expected) do
     assert is_reference(source.id)
-    assert source.hash == hash(expected.path, expected.code)
     assert source.path == expected.path
     assert source.code == expected.code
+    assert source.hash == hash(expected.path, expected.code)
     assert source.modules == expected.modules
     assert source.updates == Map.get(expected, :updates, [])
     assert source.issues == Map.get(expected, :issues, [])
+
+    if Map.has_key?(expected, :ast) do
+      assert source.ast == expected.ast
+    end
   end
 end

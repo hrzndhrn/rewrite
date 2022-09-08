@@ -7,6 +7,10 @@
 + Remove `Rewrite.Source.debug_info/2` and `BeamFile` dependency.
 + Add `Rewrite.Project.sources_by_module/2`, `Rewrite.Project.source_by_module/2`
   and `RewriteProject.source_by_module!/2`.
++ Remove `Rewrite.Source.zipper/1`
++ Update `Rewrite.Source.update`. An update can now be made with `:path`, `:ast`,
+  and `:code`. An update with a `Sourceror.Zipper.zipper()` is no longer
+  supported.
 
 ## 0.1.1 - 2022/09/07
 
