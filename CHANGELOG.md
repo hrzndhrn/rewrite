@@ -11,6 +11,7 @@
 + Update `Rewrite.Source.update`. An update can now be made with `:path`, `:ast`,
   and `:code`. An update with a `Sourceror.Zipper.zipper()` is no longer
   supported.
++ Add `Rewrite.Source.from_ast/3`.
 
 ## 0.1.1 - 2022/09/07
 

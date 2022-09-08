@@ -87,7 +87,7 @@ defmodule Rewrite.Source do
           {code, Sourceror.parse_string!(code)}
 
         ast ->
-          {Sourceror.to_string(ast), ast}
+          {Sourceror.to_string(ast, DotFormatter.opts()), ast}
       end
 
     path = Keyword.get(fields, :path, nil)
@@ -121,28 +121,22 @@ defmodule Rewrite.Source do
     new(code: string, path: path, owner: owner, from: :string)
   end
 
-  # @doc """
-  # Creates a new `%Source{}` from the given `string` and adds an update with the
-  # given `path` and `by`.
+  @doc """
+  Creates a new `%Source{}` from the given `ast`.
 
-  # This is a convenience function to create a new source in a task. The function
-  # is equivalent to:
-  # ```elixir
-  # string |> from_string() |> update(by, path: path)
-  # ```
+  ## Examples
 
-  # ## Examples
-
-  #     iex> source = Source.from_string(":foo", "scripts/foo.exs", Recode)
-  #     iex> Source.updated?(source)
-  #     true
-  # """
-  # @spec from_string(String.t(), Path.t(), module()) :: t()
-  # def from_string(string, path, by) do
-  #   string
-  #   |> do_from_string()
-  #   |> update(by, path: path)
-  # end
+      iex> ast = Sourceror.parse_string!("a + b")
+      iex> source = Source.from_ast(ast)
+      iex> source.modules
+      []
+      iex> source.code
+      "a + b"
+  """
+  @spec from_ast(Module.t(), nil | Path.t(), module()) :: t()
+  def from_ast(ast, path \\ nil, owner \\ Rewrite) do
+    new(ast: ast, path: path, owner: owner, from: :string)
+  end
 
   @doc """
   Marks the given `source` as deleted.
