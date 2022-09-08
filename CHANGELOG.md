@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 - dev
+
++ Remove `Rewrite.Issue`. The type of the field `issues` for `Rewrite.Source`
+  becomes `[term()]`.
+
 ## 0.1.1 - 2022/09/07
 
 + Update `Issue.new/4`.

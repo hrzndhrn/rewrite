@@ -1,7 +1,6 @@
 defmodule Rewrite.ProjectTest do
   use ExUnit.Case
 
-  alias Rewrite.Issue
   alias Rewrite.Project
   alias Rewrite.ProjectError
   alias Rewrite.Source
@@ -390,7 +389,7 @@ defmodule Rewrite.ProjectTest do
           Source.from_string(":b", "b.exs"),
           ":c"
           |> Source.from_string("c.exs")
-          |> Source.add_issue(Issue.new(:test, "no comment", line: 1))
+          |> Source.add_issue(%{foo: 42})
         ])
 
       assert Project.issues?(project) == true
