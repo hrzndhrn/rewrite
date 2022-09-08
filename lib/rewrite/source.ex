@@ -133,7 +133,7 @@ defmodule Rewrite.Source do
       iex> source.code
       "a + b"
   """
-  @spec from_ast(Module.t(), nil | Path.t(), module()) :: t()
+  @spec from_ast(Macro.t(), nil | Path.t(), module()) :: t()
   def from_ast(ast, path \\ nil, owner \\ Rewrite) do
     new(ast: ast, path: path, owner: owner, from: :string)
   end
@@ -150,7 +150,7 @@ defmodule Rewrite.Source do
 
   def del(%Source{path: legacy} = source, by) do
     source
-    |> put(:path, nil)
+    |> Map.put(:path, nil)
     |> update_updates({:path, by, legacy})
     |> update_hash()
   end
@@ -646,16 +646,6 @@ defmodule Rewrite.Source do
   defp update_hash(%Source{path: path, code: code} = source) do
     %{source | hash: hash(path, code)}
   end
-
-  defp put(source, :code, value) do
-    code = newline(value)
-
-    source
-    |> Map.put(:code, code)
-    |> Map.put(:ast, Sourceror.parse_string!(code))
-  end
-
-  defp put(source, key, value), do: Map.put(source, key, value)
 
   defp update_updates(%Source{updates: updates} = source, update) do
     %{source | updates: [update | updates]}

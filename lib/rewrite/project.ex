@@ -151,7 +151,7 @@ defmodule Rewrite.Project do
   @doc """
   Same as `source_by_module/2` but raises a `ProjectError`.
   """
-  @spec source_by_module!(t(), Path.t()) :: Source.t()
+  @spec source_by_module!(t(), module()) :: Source.t()
   def source_by_module!(%Project{} = project, module) do
     case source_by_module(project, module) do
       {:ok, source} -> source
