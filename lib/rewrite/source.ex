@@ -555,6 +555,12 @@ defmodule Rewrite.Source do
   def ast(%Source{ast: ast}), do: ast
 
   @doc """
+  Returns the owner of the given `source`.
+  """
+  @spec owner(t()) :: module()
+  def owner(%Source{owner: owner}), do: owner
+
+  @doc """
   Compares the `path` values of the given sources.
 
   ## Examples
