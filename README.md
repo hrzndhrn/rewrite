@@ -3,7 +3,7 @@
 An API for rewriting sources in an Elixir project. Powered by
 [`sourceror`](https://github.com/doorgan/sourceror).
 
-Documentation can be found at [https://hexdocs.pm/datix](https://hexdocs.pm/rewrite).
+Documentation can be found at [https://hexdocs.pm/rewrite](https://hexdocs.pm/rewrite).
 
 ## Installation
 
