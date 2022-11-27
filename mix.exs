@@ -1,7 +1,7 @@
 defmodule Rewrite.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
   @source_url "https://github.com/hrzndhrn/rewrite"
 
   def project do
@@ -66,6 +66,7 @@ defmodule Rewrite.MixProject do
 
   defp deps do
     [
+      {:glob_ex, "~> 0.1"},
       {:sourceror, "~> 0.11"},
       # dev/test
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2022/11/27
+
++ Accept glob as `%GLobEx{}` as argument for `Rewrite.Project.read!/1`
+
 ## 0.2.0 - 2022/09/08
 
 + Remove `Rewrite.Issue`. The type of the field `issues` for `Rewrite.Source`

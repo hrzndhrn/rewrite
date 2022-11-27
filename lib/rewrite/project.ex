@@ -13,12 +13,18 @@ defmodule Rewrite.Project do
 
   @type t :: %Project{sources: %{id() => Source.t()}}
 
+  @type wildcard :: IO.chardata()
+
   @doc """
   Creates a `%Project{}` from the given `inputs`.
   """
-  @spec read!(Path.t() | [Path.t()]) :: t()
+  @spec read!(input | [input]) :: t() when input: Path.t() | wildcard() | GlobEx.t()
   def read!(inputs) do
-    inputs = inputs |> List.wrap() |> Enum.flat_map(&Path.wildcard/1)
+    inputs =
+      inputs
+      |> List.wrap()
+      |> Enum.map(&compile_globs!/1)
+      |> Enum.flat_map(&GlobEx.ls/1)
 
     sources =
       Enum.reduce(inputs, %{}, fn path, sources ->
@@ -347,6 +353,10 @@ defmodule Rewrite.Project do
   end
 
   defp write?(%Source{path: path}, exclude), do: path not in exclude
+
+  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
+
+  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 
   defimpl Enumerable do
     def count(project) do
