@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 - 2022/11/27
+## 0.3.0 - 2022/12/10
 
 + Accept glob as `%GLobEx{}` as argument for `Rewrite.Project.read!/1`
 
