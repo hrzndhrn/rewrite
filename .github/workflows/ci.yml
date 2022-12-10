@@ -1,4 +1,4 @@
-# Created with GitHubActions version 0.2.4
+# Created with GitHubActions version 0.2.5
 name: CI
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -10,7 +10,6 @@ jobs:
     name: Test on Ubuntu (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
     runs-on: ubuntu-20.04
     strategy:
-      fail-fast: false
       matrix:
         elixir:
           - '1.13.4'
