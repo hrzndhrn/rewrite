@@ -5,7 +5,7 @@ defmodule Rewrite.ProjectTest do
   alias Rewrite.ProjectError
   alias Rewrite.Source
 
-  doctest Rewrite.Project, tags: :doctest
+  doctest Rewrite.Project
 
   describe "read!/1" do
     test "creates a project from one file" do

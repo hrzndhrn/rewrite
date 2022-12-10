@@ -3,7 +3,7 @@ defmodule Rewrite.TextDiffTest do
 
   alias Rewrite.TextDiff
 
-  doctest Rewrite.TextDiff, tags: :doctest
+  doctest Rewrite.TextDiff
 
   describe "format/3" do
     test "with unchanged texts" do
