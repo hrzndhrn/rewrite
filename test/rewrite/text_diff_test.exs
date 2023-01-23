@@ -421,6 +421,99 @@ defmodule Rewrite.TextDiffTest do
 
       assert to_binary(old, new, color: false, line_numbers: false) == exp
     end
+
+    test "accepts alternate :format" do
+      old = """
+      aaa
+      bbb
+      ccc
+      ddd
+      eee
+      """
+
+      new = """
+      aaa
+      bbb
+      xxx
+      ddd
+      eee
+      """
+
+      opts = [
+        format: [
+          gutter: [
+            skip: "~~~",
+            ins: "+++",
+            del: "---",
+            eq: "   "
+          ]
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert to_binary(old, new, [color: false] ++ opts) == """
+                ~~~|
+             2 2   |bbb
+             3  ---|ccc
+               3+++|xxx
+             4 4   |ddd
+                ~~~|
+             """
+
+      opts = [
+        format: [
+          separator: "> "
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert to_binary(old, new, [color: false] ++ opts) == """
+                ...> \n\
+             2 2   > bbb
+             3   - > ccc
+               3 + > xxx
+             4 4   > ddd
+                ...> \n\
+             """
+
+      opts = [
+        format: [
+          colors: []
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert to_binary(old, new, opts) == """
+                ...|
+             2 2   |bbb
+             3   - |ccc
+               3 + |xxx
+             4 4   |ddd
+                ...|
+             """
+
+      opts = [
+        format: [
+          colors: [
+            skip: [text: :light_black],
+            ins: [text: :blue],
+            del: [text: :magenta]
+          ]
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert Rewrite.TextDiff.format(old, new, opts)
+
+      if IO.ANSI.enabled?() do
+        assert to_binary(old, new, opts) ==
+                 "   \e[90m...\e[0m|\n2 2   |bbb\n3  \e[35m - \e[0m|\e[35mccc\e[0m\n  3\e[34m + \e[0m|\e[34mxxx\e[0m\n4 4   |ddd\n   \e[90m...\e[0m|\n"
+      end
+    end
   end
 
   defp to_binary(old, new, opts \\ []) do
