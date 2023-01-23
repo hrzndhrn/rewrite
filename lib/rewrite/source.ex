@@ -586,6 +586,8 @@ defmodule Rewrite.Source do
   @doc ~S'''
   Returns iodata showing all diffs of the given `source`.
 
+  See `Rewrite.TextDiff.format/3` for options.
+
   ## Examples
 
       iex> code = """
