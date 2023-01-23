@@ -58,7 +58,8 @@ defmodule Rewrite.TextDiff do
     colors: [
       del: [text: :red, space: :red_background],
       ins: [text: :green, space: :green_background],
-      skip: [text: :light_black]
+      skip: [text: :light_black],
+      separator: [text: :light_black]
     ]
   ]
 
@@ -108,6 +109,7 @@ defmodule Rewrite.TextDiff do
       * `:del` - `[text: :red, space: :red_background]`
       * `:ins` - `[text: :green, space: :green_background]`
       * `:skip` - `[text: :light_black]`
+      * `:separator` - `[text: :light_black]`
 
   These top-level formatting options will be merged into passed options. For
   example, you could change only the `:separator` with:
@@ -287,8 +289,9 @@ defmodule Rewrite.TextDiff do
       end
 
     gutter = colorize(opts[:format][:gutter][:skip], :skip, false, opts)
+    separator = colorize(opts[:format][:separator], :separator, false, opts)
 
-    [[line_num, gutter, opts[:format][:separator], @newline] | iodata]
+    [[line_num, gutter, separator, @newline] | iodata]
   end
 
   defp lines(iodata, {:chg, del, ins}, line_nums, opts) do
@@ -314,7 +317,7 @@ defmodule Rewrite.TextDiff do
     [
       maybe_line_num(line_nums, kind, opts),
       colorize(opts[:format][:gutter][kind], kind, false, opts),
-      opts[:format][:separator]
+      colorize(opts[:format][:separator], :separator, false, opts)
     ]
   end
 
