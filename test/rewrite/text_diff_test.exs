@@ -18,7 +18,8 @@ defmodule Rewrite.TextDiffTest do
       assert output = to_binary(old, new)
 
       if IO.ANSI.enabled?() do
-        assert output == "1  \e[31m - \e[0m|\e[31mdel\e[0m\n  1\e[32m + \e[0m|\n"
+        assert output ==
+                 "1  \e[31m - \e[0m\e[90m|\e[0m\e[31mdel\e[0m\n  1\e[32m + \e[0m\e[90m|\e[0m\n"
       end
 
       assert to_binary(old, new, color: false) == """
@@ -35,8 +36,8 @@ defmodule Rewrite.TextDiffTest do
 
       if IO.ANSI.enabled?() do
         assert output == """
-               1  \e[31m - \e[0m|one three\e[31m\e[0m\e[41m \e[0m\e[31mtwo\e[0m
-                 1\e[32m + \e[0m|one t\e[32mwo\e[0m\e[42m \e[0m\e[32mt\e[0mhree
+               1  \e[31m - \e[0m\e[90m|\e[0mone three\e[31m\e[0m\e[41m \e[0m\e[31mtwo\e[0m
+                 1\e[32m + \e[0m\e[90m|\e[0mone t\e[32mwo\e[0m\e[42m \e[0m\e[32mt\e[0mhree
                """
       end
 
@@ -420,6 +421,100 @@ defmodule Rewrite.TextDiffTest do
       assert TextDiff.format(old, new, line_numbers: false)
 
       assert to_binary(old, new, color: false, line_numbers: false) == exp
+    end
+
+    test "accepts alternate :format" do
+      old = """
+      aaa
+      bbb
+      ccc
+      ddd
+      eee
+      """
+
+      new = """
+      aaa
+      bbb
+      xxx
+      ddd
+      eee
+      """
+
+      opts = [
+        format: [
+          gutter: [
+            skip: "~~~",
+            ins: "+++",
+            del: "---",
+            eq: "   "
+          ]
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert to_binary(old, new, [color: false] ++ opts) == """
+                ~~~|
+             2 2   |bbb
+             3  ---|ccc
+               3+++|xxx
+             4 4   |ddd
+                ~~~|
+             """
+
+      opts = [
+        format: [
+          separator: "> "
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert to_binary(old, new, [color: false] ++ opts) == """
+                ...> \n\
+             2 2   > bbb
+             3   - > ccc
+               3 + > xxx
+             4 4   > ddd
+                ...> \n\
+             """
+
+      opts = [
+        format: [
+          colors: []
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert to_binary(old, new, opts) == """
+                ...|
+             2 2   |bbb
+             3   - |ccc
+               3 + |xxx
+             4 4   |ddd
+                ...|
+             """
+
+      opts = [
+        format: [
+          colors: [
+            ins: [text: :blue],
+            del: [text: :magenta],
+            skip: [text: :light_black],
+            separator: [text: :light_black]
+          ]
+        ],
+        before: 1,
+        after: 1
+      ]
+
+      assert Rewrite.TextDiff.format(old, new, opts)
+
+      if IO.ANSI.enabled?() do
+        assert to_binary(old, new, opts) ==
+                 "   \e[90m...\e[0m\e[90m|\e[0m\n2 2   \e[90m|\e[0mbbb\n3  \e[35m - \e[0m\e[90m|\e[0m\e[35mccc\e[0m\n  3\e[34m + \e[0m\e[90m|\e[0m\e[34mxxx\e[0m\n4 4   \e[90m|\e[0mddd\n   \e[90m...\e[0m\e[90m|\e[0m\n"
+      end
     end
   end
 

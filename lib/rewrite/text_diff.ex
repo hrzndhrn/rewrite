@@ -44,21 +44,23 @@ defmodule Rewrite.TextDiff do
 
   @newline "\n"
   @blank " "
-
-  @separator "|"
-  @cr "↵"
   @line_num_pad @blank
+  @cr "↵"
 
-  @gutter [
-    del: " - ",
-    eq: "   ",
-    ins: " + ",
-    skip: "..."
-  ]
-
-  @colors [
-    del: [text: :red, space: :red_background],
-    ins: [text: :green, space: :green_background]
+  @format [
+    separator: "|",
+    gutter: [
+      del: " - ",
+      eq: "   ",
+      ins: " + ",
+      skip: "..."
+    ],
+    colors: [
+      del: [text: :red, space: :red_background],
+      ins: [text: :green, space: :green_background],
+      skip: [text: :light_black],
+      separator: [text: :light_black]
+    ]
   ]
 
   @default_opts [
@@ -66,7 +68,8 @@ defmodule Rewrite.TextDiff do
     before: 2,
     color: true,
     line: 1,
-    line_numbers: true
+    line_numbers: true,
+    format: @format
   ]
 
   @doc ~S'''
@@ -75,15 +78,45 @@ defmodule Rewrite.TextDiff do
   The returned `iodata` shows the lines with changes and 2 lines before and
   after the changed positions. The string contains also a gutter with line
   number and a `-` or `+` for removed and added lines. Multiple lines without
-  changes are marke with `...` in the gutter.
+  changes are marked with `...` in the gutter.
 
   ## Options
 
-    * `after` - the count of lines printed after each change. Defaults to `2`.
-    * `before` - the count of lines printed before each change. Defaults to `2`.
-    * `color` - enables color in the output. Defaults to `true`.
-    * `line_numbers` - enables line numbers. Defaults to `true`.
-    * `line` - the line number of the first line. Defaults to `1`.
+    * `:after` - the count of lines printed after each change. Defaults to `2`.
+    * `:before` - the count of lines printed before each change. Defaults to `2`.
+    * `:color` - enables color in the output. Defaults to `true`.
+    * `:line_numbers` - enables line numbers. Defaults to `true`.
+    * `:line` - the line number of the first line. Defaults to `1`.
+    * `:format` - optional keyword list of formatting options. See "Formatting"
+      below.
+
+  ## Formatting
+
+  Alternative formatting options can be passed to control the gutter, colors,
+  and the separator between the gutter and line of text in the rendered diff.
+  The separator is the same for all lines, but the gutter and colors differ
+  depending on the operation: `:eq`, `:del`, `:ins`, `:skip`.
+
+  The options (and their defaults) are:
+
+    * `:separator` - `"|"`
+    * `:gutter`
+      * `:eq` - `"   "`
+      * `:del` - `" - "`
+      * `:ins` - `" + "`
+      * `:skip` - `"..."`
+    * `:colors`
+      * `:del` - `[text: :red, space: :red_background]`
+      * `:ins` - `[text: :green, space: :green_background]`
+      * `:skip` - `[text: :light_black]`
+      * `:separator` - `[text: :light_black]`
+
+  These top-level formatting options will be merged into passed options. For
+  example, you could change only the `:separator` with:
+
+      format(string1, string2, format: [separator: "~ "])
+
+  See `IO.ANSI` for info on colors.
 
   ## Examples
 
@@ -146,7 +179,10 @@ defmodule Rewrite.TextDiff do
   def format(code, code, _opts), do: []
 
   def format(old, new, opts) do
-    opts = Keyword.merge(@default_opts, opts)
+    opts =
+      @default_opts
+      |> Keyword.merge(opts)
+      |> Keyword.update(:format, [], &Keyword.merge(@format, &1))
 
     crs? = String.contains?(old, "\r") || String.contains?(new, "\r")
 
@@ -252,7 +288,10 @@ defmodule Rewrite.TextDiff do
         ""
       end
 
-    [[line_num, @gutter[:skip], @separator, @newline] | iodata]
+    gutter = colorize(opts[:format][:gutter][:skip], :skip, false, opts)
+    separator = colorize(opts[:format][:separator], :separator, false, opts)
+
+    [[line_num, gutter, separator, @newline] | iodata]
   end
 
   defp lines(iodata, {:chg, del, ins}, line_nums, opts) do
@@ -277,8 +316,8 @@ defmodule Rewrite.TextDiff do
   defp gutter(line_nums, kind, opts) do
     [
       maybe_line_num(line_nums, kind, opts),
-      colorize(@gutter[kind], kind, false, opts),
-      @separator
+      colorize(opts[:format][:gutter][kind], kind, false, opts),
+      colorize(opts[:format][:separator], :separator, false, opts)
     ]
   end
 
@@ -336,28 +375,33 @@ defmodule Rewrite.TextDiff do
   end
 
   defp colorize(str, kind, space, opts) do
-    case Keyword.fetch!(opts, :color) && Keyword.has_key?(@colors, kind) do
-      false ->
+    case {get_color(opts, kind), space} do
+      {nil, _} ->
         str
 
-      true ->
-        color = Keyword.fetch!(@colors, kind)
+      {%{text: text_color, space: space_color}, true} ->
+        str
+        |> String.split(~r/[\t\s]+/, include_captures: true)
+        |> Enum.map(fn
+          <<start::binary-size(1), _::binary>> = str when start in ["\t", "\s"] ->
+            IO.ANSI.format([space_color, str])
 
-        case space do
-          false ->
-            IO.ANSI.format([color[:text], str])
+          str ->
+            IO.ANSI.format([text_color, str])
+        end)
 
-          true ->
-            str
-            |> String.split(~r/[\t\s]+/, include_captures: true)
-            |> Enum.map(fn
-              <<start::binary-size(1), _::binary>> = str when start in ["\t", "\s"] ->
-                IO.ANSI.format([color[:space], str])
+      {%{text: text_color}, _} ->
+        IO.ANSI.format([text_color, str])
+    end
+  end
 
-              str ->
-                IO.ANSI.format([color[:text], str])
-            end)
-        end
+  defp get_color(opts, kind) do
+    colors = opts[:format][:colors]
+
+    if Keyword.fetch!(opts, :color) && Keyword.has_key?(colors, kind) do
+      Map.new(colors[kind])
+    else
+      nil
     end
   end
 
