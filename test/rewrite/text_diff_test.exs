@@ -386,6 +386,41 @@ defmodule Rewrite.TextDiffTest do
 
       assert to_binary(old, new, color: false) == exp
     end
+
+    test "omits line numbers when :line_numbers is false" do
+      old = """
+      aaa
+      bbb
+      ccc
+      ddd
+      eee
+      fff
+      ggg
+      """
+
+      new = """
+      aaa
+      bbb
+      ccc
+      eee
+      fff
+      ggg
+      """
+
+      exp = """
+      ...|
+         |bbb
+         |ccc
+       - |ddd
+         |eee
+         |fff
+      ...|
+      """
+
+      assert TextDiff.format(old, new, line_numbers: false)
+
+      assert to_binary(old, new, color: false, line_numbers: false) == exp
+    end
   end
 
   defp to_binary(old, new, opts \\ []) do

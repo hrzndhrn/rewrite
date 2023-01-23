@@ -65,7 +65,8 @@ defmodule Rewrite.TextDiff do
     after: 2,
     before: 2,
     color: true,
-    line: 1
+    line: 1,
+    line_numbers: true
   ]
 
   @doc ~S'''
@@ -80,7 +81,8 @@ defmodule Rewrite.TextDiff do
 
     * `after` - the count of lines printed after each change. Defaults to `2`.
     * `before` - the count of lines printed before each change. Defaults to `2`.
-    * `color` - enables color in the output. Defaults to `truel.`
+    * `color` - enables color in the output. Defaults to `true`.
+    * `line_numbers` - enables line numbers. Defaults to `true`.
     * `line` - the line number of the first line. Defaults to `1`.
 
   ## Examples
@@ -123,6 +125,19 @@ defmodule Rewrite.TextDiff do
           6 + |    {x, y, z}
        7  7   |  end
            ...|
+      """
+      iex> code
+      ...> |> Rewrite.TextDiff.format(formatted, color: false, line_numbers: false)
+      ...> |> IO.iodata_to_binary()
+      """
+      ...|
+         |  bar(x, y) do
+         |    z = x + y
+       - |    {x,y  , z}
+       + |    {x, y, z}
+         |  end
+         |
+      ...|
       """
   '''
   @spec format(String.t(), String.t(), keyword()) :: iodata()
@@ -230,7 +245,13 @@ defmodule Rewrite.TextDiff do
   end
 
   defp lines(iodata, :skip, opts) do
-    line_num = String.duplicate(@blank, opts[:line_num_digits] * 2 + 1)
+    line_num =
+      if opts[:line_numbers] do
+        String.duplicate(@blank, opts[:line_num_digits] * 2 + 1)
+      else
+        ""
+      end
+
     [[line_num, @gutter[:skip], @separator, @newline] | iodata]
   end
 
@@ -254,7 +275,19 @@ defmodule Rewrite.TextDiff do
   end
 
   defp gutter(line_nums, kind, opts) do
-    [line_num(line_nums, kind, opts), colorize(@gutter[kind], kind, false, opts), @separator]
+    [
+      maybe_line_num(line_nums, kind, opts),
+      colorize(@gutter[kind], kind, false, opts),
+      @separator
+    ]
+  end
+
+  defp maybe_line_num(line_nums, operation, opts) do
+    if opts[:line_numbers] do
+      line_num(line_nums, operation, opts)
+    else
+      []
+    end
   end
 
   defp line_num({line_num_old, line_num_new}, :eq, opts) do
