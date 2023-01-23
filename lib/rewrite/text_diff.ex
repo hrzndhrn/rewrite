@@ -44,21 +44,21 @@ defmodule Rewrite.TextDiff do
 
   @newline "\n"
   @blank " "
-
-  @separator "|"
-  @cr "↵"
   @line_num_pad @blank
+  @cr "↵"
 
-  @gutter [
-    del: " - ",
-    eq: "   ",
-    ins: " + ",
-    skip: "..."
-  ]
-
-  @colors [
-    del: [text: :red, space: :red_background],
-    ins: [text: :green, space: :green_background]
+  @format [
+    separator: "|",
+    gutter: [
+      del: " - ",
+      eq: "   ",
+      ins: " + ",
+      skip: "..."
+    ],
+    colors: [
+      del: [text: :red, space: :red_background],
+      ins: [text: :green, space: :green_background]
+    ]
   ]
 
   @default_opts [
@@ -66,7 +66,8 @@ defmodule Rewrite.TextDiff do
     before: 2,
     color: true,
     line: 1,
-    line_numbers: true
+    line_numbers: true,
+    format: @format
   ]
 
   @doc ~S'''
@@ -75,7 +76,7 @@ defmodule Rewrite.TextDiff do
   The returned `iodata` shows the lines with changes and 2 lines before and
   after the changed positions. The string contains also a gutter with line
   number and a `-` or `+` for removed and added lines. Multiple lines without
-  changes are marke with `...` in the gutter.
+  changes are marked with `...` in the gutter.
 
   ## Options
 
@@ -252,7 +253,7 @@ defmodule Rewrite.TextDiff do
         ""
       end
 
-    [[line_num, @gutter[:skip], @separator, @newline] | iodata]
+    [[line_num, opts[:format][:gutter][:skip], opts[:format][:separator], @newline] | iodata]
   end
 
   defp lines(iodata, {:chg, del, ins}, line_nums, opts) do
@@ -277,8 +278,8 @@ defmodule Rewrite.TextDiff do
   defp gutter(line_nums, kind, opts) do
     [
       maybe_line_num(line_nums, kind, opts),
-      colorize(@gutter[kind], kind, false, opts),
-      @separator
+      colorize(opts[:format][:gutter][kind], kind, false, opts),
+      opts[:format][:separator]
     ]
   end
 
@@ -336,12 +337,12 @@ defmodule Rewrite.TextDiff do
   end
 
   defp colorize(str, kind, space, opts) do
-    case Keyword.fetch!(opts, :color) && Keyword.has_key?(@colors, kind) do
+    case Keyword.fetch!(opts, :color) && Keyword.has_key?(opts[:format][:colors], kind) do
       false ->
         str
 
       true ->
-        color = Keyword.fetch!(@colors, kind)
+        color = Keyword.fetch!(opts[:format][:colors], kind)
 
         case space do
           false ->
