@@ -371,7 +371,7 @@ defmodule Rewrite.TextDiff do
       str = IO.iodata_to_binary(iodata)
 
       case op do
-        :eq -> {[del | str], [ins | str]}
+        :eq -> {[del | iodata], [ins | iodata]}
         :del -> {[del | colorize(str, :del, true, opts)], ins}
         :ins -> {del, [ins | colorize(str, :ins, true, opts)]}
       end
