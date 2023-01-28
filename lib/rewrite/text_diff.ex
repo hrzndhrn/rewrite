@@ -365,12 +365,16 @@ defmodule Rewrite.TextDiff do
   end
 
   defp line_diff(del, ins, opts) do
-    diff = String.myers_difference(del, ins)
+    diff = List.myers_difference(tokenize(del), tokenize(ins))
 
-    Enum.reduce(diff, {[], []}, fn
-      {:eq, str}, {del, ins} -> {[del | str], [ins | str]}
-      {:del, str}, {del, ins} -> {[del | colorize(str, :del, true, opts)], ins}
-      {:ins, str}, {del, ins} -> {del, [ins | colorize(str, :ins, true, opts)]}
+    Enum.reduce(diff, {[], []}, fn {op, iodata}, {del, ins} ->
+      str = IO.iodata_to_binary(iodata)
+
+      case op do
+        :eq -> {[del | str], [ins | str]}
+        :del -> {[del | colorize(str, :del, true, opts)], ins}
+        :ins -> {del, [ins | colorize(str, :ins, true, opts)]}
+      end
     end)
   end
 
@@ -450,5 +454,9 @@ defmodule Rewrite.TextDiff do
       {true, false} -> {String.replace(left, "\r", @cr), right}
       {false, true} -> {left, String.replace(right, "\r", @cr)}
     end
+  end
+
+  defp tokenize(line) do
+    String.split(line, ~r/[^a-zA-Z0-9_]/, include_captures: true, trim: true)
   end
 end
