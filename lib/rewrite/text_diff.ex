@@ -69,6 +69,7 @@ defmodule Rewrite.TextDiff do
     color: true,
     line: 1,
     line_numbers: true,
+    tokenizer: {__MODULE__, :default_tokenizer, []},
     format: @format
   ]
 
@@ -87,6 +88,13 @@ defmodule Rewrite.TextDiff do
     * `:color` - enables color in the output. Defaults to `true`.
     * `:line_numbers` - enables line numbers. Defaults to `true`.
     * `:line` - the line number of the first line. Defaults to `1`.
+    * `:tokenizer` - a function that splits a line of text into distinct tokens
+      that should be compared when creating a colorized diff of a single line.
+      The default tokenizer prioritizes highlighting entire words, so a line
+      that updates `two` to `three` would appear as removing `two` and adding
+      `three`, instead of keeping the `t`, removing `wo`, and adding `hree`.
+      `:tokenizer` may be a function that accepts a single argument or an MFA
+      tuple, where the line of text will be prepended to the given arguments.
     * `:format` - optional keyword list of formatting options. See "Formatting"
       below.
 
@@ -365,7 +373,8 @@ defmodule Rewrite.TextDiff do
   end
 
   defp line_diff(del, ins, opts) do
-    diff = List.myers_difference(tokenize(del), tokenize(ins))
+    tokenizer = Keyword.fetch!(opts, :tokenizer)
+    diff = List.myers_difference(tokenize(del, tokenizer), tokenize(ins, tokenizer))
 
     Enum.reduce(diff, {[], []}, fn {op, iodata}, {del, ins} ->
       str = IO.iodata_to_binary(iodata)
@@ -456,7 +465,14 @@ defmodule Rewrite.TextDiff do
     end
   end
 
-  defp tokenize(line) do
+  defp tokenize(line, fun) when is_function(fun, 1), do: fun.(line)
+
+  defp tokenize(line, {m, f, a}) when is_atom(m) and is_atom(f) and is_list(a) do
+    apply(m, f, [line] ++ a)
+  end
+
+  @doc false
+  def default_tokenizer(line) do
     String.split(line, ~r/[^a-zA-Z0-9_]/, include_captures: true, trim: true)
   end
 end

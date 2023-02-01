@@ -516,6 +516,27 @@ defmodule Rewrite.TextDiffTest do
                  "   \e[90m...\e[0m\e[90m|\e[0m\n2 2   \e[90m|\e[0mbbb\n3  \e[35m - \e[0m\e[90m|\e[0m\e[35mccc\e[0m\n  3\e[34m + \e[0m\e[90m|\e[0m\e[34mxxx\e[0m\n4 4   \e[90m|\e[0mddd\n   \e[90m...\e[0m\e[90m|\e[0m\n"
       end
     end
+
+    test "accepts alternate :tokenizer" do
+      for opts <- [[tokenizer: &String.graphemes/1], [tokenizer: {String, :graphemes, []}]] do
+        old = "one three two"
+        new = "one two three"
+
+        assert output = to_binary(old, new, opts)
+
+        if IO.ANSI.enabled?() do
+          assert output == """
+                 1  \e[31m - \e[0m\e[90m|\e[0mone three\e[31m\e[0m\e[41m \e[0m\e[31mtwo\e[0m
+                   1\e[32m + \e[0m\e[90m|\e[0mone t\e[32mwo\e[0m\e[42m \e[0m\e[32mt\e[0mhree
+                 """
+        end
+
+        assert to_binary(old, new, [color: false] ++ opts) == """
+               1   - |one three two
+                 1 + |one two three
+               """
+      end
+    end
   end
 
   defp to_binary(old, new, opts \\ []) do
