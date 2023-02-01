@@ -468,7 +468,7 @@ defmodule Rewrite.TextDiff do
   defp tokenize(line, fun) when is_function(fun, 1), do: fun.(line)
 
   defp tokenize(line, {m, f, a}) when is_atom(m) and is_atom(f) and is_list(a) do
-    apply(m, f, [line] ++ a)
+    apply(m, f, [line | a])
   end
 
   @doc false
