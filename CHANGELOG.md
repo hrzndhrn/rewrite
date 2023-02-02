@@ -1,8 +1,12 @@
 # Changelog
 
+## Unreleased
+
++ Update `Rewrite.TextDiff.format/3` to include more formatting customization.
+
 ## 0.3.0 - 2022/12/10
 
-+ Accept glob as `%GLobEx{}` as argument for `Rewrite.Project.read!/1`
++ Accept glob as `%GlobEx{}` as argument for `Rewrite.Project.read!/1`
 
 ## 0.2.0 - 2022/09/08
 
