@@ -8,6 +8,7 @@ defmodule Rewrite.MixProject do
     [
       aliases: aliases(),
       app: :rewrite,
+      version: @version,
       deps: deps(),
       description: description(),
       dialyzer: dialyzer(),
@@ -18,7 +19,7 @@ defmodule Rewrite.MixProject do
       source_url: @source_url,
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
-      version: @version
+      xref: [exclude: [FreedomFormatter.Formatter]]
     ]
   end
 

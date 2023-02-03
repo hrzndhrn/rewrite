@@ -640,6 +640,8 @@ defmodule Rewrite.Source do
 
   defp to_string_opts(path \\ "elixir.ex")
 
+  defp to_string_opts(nil), do: to_string_opts("elixir.ex")
+
   defp to_string_opts(%Source{path: path}), do: to_string_opts(path)
 
   @compile {:no_warn_undefined, FreedomFormatter.Formatter}
