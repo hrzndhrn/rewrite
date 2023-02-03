@@ -9,6 +9,7 @@ defmodule Rewrite.Source do
   The struct also holds `issues` for the source.
   """
 
+  alias Mix.Tasks.Format
   alias Rewrite.Source
   alias Rewrite.TextDiff
   alias Sourceror.Zipper
@@ -638,7 +639,7 @@ defmodule Rewrite.Source do
   end
 
   defp format(ast, file \\ nil) do
-    {_formatter, opts} = Mix.Tasks.Format.formatter_for_file(file || "source.ex")
+    {_formatter, opts} = Format.formatter_for_file(file || "source.ex")
 
     algebra =
       case Keyword.get(opts, :plugins) do
