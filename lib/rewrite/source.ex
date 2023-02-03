@@ -9,7 +9,6 @@ defmodule Rewrite.Source do
   The struct also holds `issues` for the source.
   """
 
-  alias Rewrite.DotFormatter
   alias Rewrite.Source
   alias Rewrite.TextDiff
   alias Sourceror.Zipper
@@ -87,7 +86,7 @@ defmodule Rewrite.Source do
           {code, Sourceror.parse_string!(code)}
 
         ast ->
-          {Sourceror.to_string(ast, DotFormatter.opts()), ast}
+          {Sourceror.to_string(ast, to_string_opts()), ast}
       end
 
     path = Keyword.get(fields, :path, nil)
@@ -305,7 +304,7 @@ defmodule Rewrite.Source do
   end
 
   defp do_update(source, :ast, ast) do
-    code = ast |> Sourceror.to_string(DotFormatter.opts()) |> newline()
+    code = ast |> Sourceror.to_string(to_string_opts(source)) |> newline()
     %Source{source | ast: ast, code: code}
   end
 
@@ -637,6 +636,23 @@ defmodule Rewrite.Source do
     end)
     |> elem(1)
     |> Enum.uniq()
+  end
+
+  defp to_string_opts(path \\ "elixir.ex")
+
+  defp to_string_opts(%Source{path: path}), do: to_string_opts(path)
+
+  @compile {:no_warn_undefined, FreedomFormatter.Formatter}
+  defp to_string_opts(path) do
+    {_formatter, opts} = Mix.Tasks.Format.formatter_for_file(path)
+
+    case Keyword.fetch(opts, :plugins) do
+      {:ok, [FreedomFormatter]} ->
+        Keyword.put(opts, :quoted_to_algebra, &FreedomFormatter.Formatter.to_algebra/2)
+
+      _else ->
+        opts
+    end
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
