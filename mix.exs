@@ -24,7 +24,7 @@ defmodule Rewrite.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :mix]
+      extra_applications: [:logger, :mix, :crypto]
     ]
   end
 
