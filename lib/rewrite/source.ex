@@ -86,7 +86,7 @@ defmodule Rewrite.Source do
           {code, Sourceror.parse_string!(code)}
 
         ast ->
-          {Sourceror.to_string(ast, to_string_opts()), ast}
+          {format(ast), ast}
       end
 
     path = Keyword.get(fields, :path, nil)
@@ -113,11 +113,11 @@ defmodule Rewrite.Source do
       iex> source.modules
       []
       iex> source.code
-      "a + b"
+      "a + b\\n"
   """
   @spec from_string(String.t(), nil | Path.t(), module()) :: t()
   def from_string(string, path \\ nil, owner \\ Rewrite) do
-    new(code: string, path: path, owner: owner, from: :string)
+    new(code: newline(string), path: path, owner: owner, from: :string)
   end
 
   @doc """
@@ -130,7 +130,7 @@ defmodule Rewrite.Source do
       iex> source.modules
       []
       iex> source.code
-      "a + b"
+      "a + b\\n"
   """
   @spec from_ast(Macro.t(), nil | Path.t(), module()) :: t()
   def from_ast(ast, path \\ nil, owner \\ Rewrite) do
@@ -257,7 +257,7 @@ defmodule Rewrite.Source do
       ...>   |> Source.update(:example, path: "test/fixtures/new.exs")
       ...>   |> Source.update(:example, code: "a - b")
       iex> source.updates
-      [{:code, :example, "a + b"}, {:path, :example, nil}]
+      [{:code, :example, "a + b\n"}, {:path, :example, nil}]
       iex> source.code
       "a - b\n"
 
@@ -270,7 +270,7 @@ defmodule Rewrite.Source do
       ...>   |> Source.update(:example, code: "b = 21")
       ...>   |> Source.update(:example, code: "b = 21")
       iex> source.updates
-      [{:code, :example, "a = 42"}]
+      [{:code, :example, "a = 42\n"}]
   """
   @spec update(t(), by(), [code: String.t()] | [ast: Macro.t()] | [path: Path.t()]) :: t()
   def update(%Source{} = source, by, [{key, value}])
@@ -303,9 +303,8 @@ defmodule Rewrite.Source do
     %Source{source | ast: ast, code: code}
   end
 
-  defp do_update(source, :ast, ast) do
-    code = ast |> Sourceror.to_string(to_string_opts(source)) |> newline()
-    %Source{source | ast: ast, code: code}
+  defp do_update(%Source{path: path} = source, :ast, ast) do
+    %Source{source | ast: ast, code: format(ast, path)}
   end
 
   defp do_update(source, :path, path) do
@@ -638,23 +637,22 @@ defmodule Rewrite.Source do
     |> Enum.uniq()
   end
 
-  defp to_string_opts(path \\ "elixir.ex")
+  defp format(ast, file \\ nil) do
+    {_formatter, opts} = Mix.Tasks.Format.formatter_for_file(file || "source.ex")
 
-  defp to_string_opts(nil), do: to_string_opts("elixir.ex")
+    algebra =
+      case Keyword.get(opts, :plugins) do
+        [FreedomFormatter] ->
+          FreedomFormatter.Formatter.to_algebra(ast, opts)
 
-  defp to_string_opts(%Source{path: path}), do: to_string_opts(path)
+        _else ->
+          Code.quoted_to_algebra(ast, opts)
+      end
 
-  @compile {:no_warn_undefined, FreedomFormatter.Formatter}
-  defp to_string_opts(path) do
-    {_formatter, opts} = Mix.Tasks.Format.formatter_for_file(path)
-
-    case Keyword.fetch(opts, :plugins) do
-      {:ok, [FreedomFormatter]} ->
-        Keyword.put(opts, :quoted_to_algebra, &FreedomFormatter.Formatter.to_algebra/2)
-
-      _else ->
-        opts
-    end
+    algebra
+    |> Inspect.Algebra.format(Keyword.get(opts, :line_length, 98))
+    |> IO.iodata_to_binary()
+    |> newline()
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)

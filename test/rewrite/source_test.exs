@@ -25,7 +25,7 @@ defmodule Rewrite.SourceTest do
 
   describe "from_string/2" do
     test "creates a source from code" do
-      code = "def foo, do: :foo"
+      code = "def foo, do: :foo\n"
       source = Source.from_string(code)
       assert source.code == code
       assert source.path == nil
@@ -211,7 +211,7 @@ defmodule Rewrite.SourceTest do
     end
 
     test "returns the code for given version" do
-      code = "a + b"
+      code = "a + b\n"
 
       source =
         code
