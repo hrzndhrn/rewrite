@@ -114,11 +114,11 @@ defmodule Rewrite.Source do
       iex> source.modules
       []
       iex> source.code
-      "a + b\\n"
+      "a + b"
   """
   @spec from_string(String.t(), nil | Path.t(), module()) :: t()
   def from_string(string, path \\ nil, owner \\ Rewrite) do
-    new(code: newline(string), path: path, owner: owner, from: :string)
+    new(code: string, path: path, owner: owner, from: :string)
   end
 
   @doc """
@@ -131,7 +131,7 @@ defmodule Rewrite.Source do
       iex> source.modules
       []
       iex> source.code
-      "a + b\\n"
+      "a + b"
   """
   @spec from_ast(Macro.t(), nil | Path.t(), module()) :: t()
   def from_ast(ast, path \\ nil, owner \\ Rewrite) do
@@ -195,7 +195,7 @@ defmodule Rewrite.Source do
       iex> File.exists?(path)
       false
       iex> File.read(new_path)
-      {:ok, ":ping"}
+      {:ok, ":ping\n"}
   """
   @spec save(t()) :: :ok | {:error, :nofile | File.posix()}
   def save(%Source{path: nil, updates: []}), do: {:error, :nofile}
@@ -206,7 +206,7 @@ defmodule Rewrite.Source do
 
   def save(%Source{path: path, code: code} = source) do
     with :ok <- mkdir_p(path),
-         :ok <- File.write(path, code) do
+         :ok <- File.write(path, eof_newline(code)) do
       rm(source)
     end
   end
@@ -258,9 +258,9 @@ defmodule Rewrite.Source do
       ...>   |> Source.update(:example, path: "test/fixtures/new.exs")
       ...>   |> Source.update(:example, code: "a - b")
       iex> source.updates
-      [{:code, :example, "a + b\n"}, {:path, :example, nil}]
+      [{:code, :example, "a + b"}, {:path, :example, nil}]
       iex> source.code
-      "a - b\n"
+      "a - b"
 
   If the new value equal to the current value, no updates will be added.
 
@@ -271,14 +271,14 @@ defmodule Rewrite.Source do
       ...>   |> Source.update(:example, code: "b = 21")
       ...>   |> Source.update(:example, code: "b = 21")
       iex> source.updates
-      [{:code, :example, "a = 42\n"}]
+      [{:code, :example, "a = 42"}]
   """
   @spec update(t(), by(), [code: String.t()] | [ast: Macro.t()] | [path: Path.t()]) :: t()
   def update(%Source{} = source, by, [{key, value}])
       when is_atom(by) and key in [:ast, :code, :path] do
     legacy = Map.fetch!(source, key)
 
-    value = if key == :code, do: newline(value), else: value
+    value = if key == :code, do: value, else: value
 
     case legacy == value do
       true ->
@@ -615,7 +615,11 @@ defmodule Rewrite.Source do
   '''
   @spec diff(t(), keyword()) :: iodata()
   def diff(%Source{} = source, opts \\ []) do
-    TextDiff.format(code(source, 1), code(source), opts)
+    TextDiff.format(
+      source |> code(1) |> eof_newline(),
+      source |> code() |> eof_newline(),
+      opts
+    )
   end
 
   defp get_modules(code) when is_binary(code) do
@@ -653,7 +657,6 @@ defmodule Rewrite.Source do
     algebra
     |> Inspect.Algebra.format(Keyword.get(opts, :line_length, 98))
     |> IO.iodata_to_binary()
-    |> newline()
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
@@ -672,5 +675,5 @@ defmodule Rewrite.Source do
 
   defp not_empty?(enum), do: not Enum.empty?(enum)
 
-  defp newline(string), do: String.trim_trailing(string) <> "\n"
+  defp eof_newline(string), do: String.trim_trailing(string) <> "\n"
 end

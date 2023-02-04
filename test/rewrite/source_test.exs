@@ -77,7 +77,7 @@ defmodule Rewrite.SourceTest do
     test "updates the code with an AST" do
       path = "test/fixtures/source/simple.ex"
       code = File.read!(path)
-      changes = String.replace(code, "MyApp", "TheApp")
+      changes = code |> String.replace("MyApp", "TheApp") |> String.trim_trailing()
       zipper = changes |> Sourceror.parse_string!() |> Zipper.zip()
 
       source =
@@ -220,8 +220,8 @@ defmodule Rewrite.SourceTest do
         |> Source.update(:test, code: "b = 2")
 
       assert Source.code(source, 1) == code
-      assert Source.code(source, 2) == "a = 1\n"
-      assert Source.code(source, 3) == "b = 2\n"
+      assert Source.code(source, 2) == "a = 1"
+      assert Source.code(source, 3) == "b = 2"
     end
   end
 
