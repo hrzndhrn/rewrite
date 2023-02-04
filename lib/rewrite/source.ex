@@ -648,6 +648,7 @@ defmodule Rewrite.Source do
     algebra =
       case Keyword.get(opts, :plugins) do
         [FreedomFormatter] ->
+          # For now just a workaround to support the FreedomFormatter.
           FreedomFormatter.Formatter.to_algebra(ast, opts)
 
         _else ->
