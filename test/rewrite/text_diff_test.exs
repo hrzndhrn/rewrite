@@ -111,7 +111,7 @@ defmodule Rewrite.TextDiffTest do
       # assert TextDiff.format(old, new)
 
       if IO.ANSI.enabled?() do
-        assert to_binary(old,new) == """
+        assert to_binary(old, new) == """
                1  \e[31m - \e[0m\e[90m|\e[0mone \e[31mthree\e[0m\e[41m \e[0m\e[31m\e[0mtwo
                  1\e[32m + \e[0m\e[90m|\e[0mone two\e[32m\e[0m\e[42m \e[0m\e[32mthree\e[0m
                """
