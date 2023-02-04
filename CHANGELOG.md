@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2023/02/04
+
++ Support the `FreedomFormatter`.
+
 ## 0.4.0 - 2023/02/02
 
 + Update `Rewrite.TextDiff.format/3` to include more formatting customization.
