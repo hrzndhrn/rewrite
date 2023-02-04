@@ -3,6 +3,8 @@
 ## 0.4.1 - 2023/02/04
 
 + Support the `FreedomFormatter`.
++ Update `Source.save/1` to add a neline at the of file. Previously a newline
+  was added at `Source.update/3`.
 
 ## 0.4.0 - 2023/02/02
 
