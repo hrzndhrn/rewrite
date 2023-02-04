@@ -58,8 +58,8 @@ defmodule Rewrite.TextDiff do
     colors: [
       del: [text: :red, space: :red_background],
       ins: [text: :green, space: :green_background],
-      skip: [text: :light_black],
-      separator: [text: :light_black]
+      skip: [text: :yellow],
+      separator: [text: :yellow]
     ]
   ]
 
@@ -116,8 +116,8 @@ defmodule Rewrite.TextDiff do
     * `:colors`
       * `:del` - `[text: :red, space: :red_background]`
       * `:ins` - `[text: :green, space: :green_background]`
-      * `:skip` - `[text: :light_black]`
-      * `:separator` - `[text: :light_black]`
+      * `:skip` - `[text: :yellow]`
+      * `:separator` - `[text: :yellow]`
 
   These top-level formatting options will be merged into passed options. For
   example, you could change only the `:separator` with:

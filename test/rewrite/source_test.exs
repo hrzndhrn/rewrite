@@ -25,7 +25,7 @@ defmodule Rewrite.SourceTest do
 
   describe "from_string/2" do
     test "creates a source from code" do
-      code = "def foo, do: :foo"
+      code = "def foo, do: :foo\n"
       source = Source.from_string(code)
       assert source.code == code
       assert source.path == nil
@@ -77,7 +77,7 @@ defmodule Rewrite.SourceTest do
     test "updates the code with an AST" do
       path = "test/fixtures/source/simple.ex"
       code = File.read!(path)
-      changes = String.replace(code, "MyApp", "TheApp")
+      changes = code |> String.replace("MyApp", "TheApp") |> String.trim_trailing()
       zipper = changes |> Sourceror.parse_string!() |> Zipper.zip()
 
       source =
@@ -211,7 +211,7 @@ defmodule Rewrite.SourceTest do
     end
 
     test "returns the code for given version" do
-      code = "a + b"
+      code = "a + b\n"
 
       source =
         code
@@ -220,8 +220,8 @@ defmodule Rewrite.SourceTest do
         |> Source.update(:test, code: "b = 2")
 
       assert Source.code(source, 1) == code
-      assert Source.code(source, 2) == "a = 1\n"
-      assert Source.code(source, 3) == "b = 2\n"
+      assert Source.code(source, 2) == "a = 1"
+      assert Source.code(source, 3) == "b = 2"
     end
   end
 

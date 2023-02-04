@@ -9,7 +9,7 @@ defmodule Rewrite.Source do
   The struct also holds `issues` for the source.
   """
 
-  alias Rewrite.DotFormatter
+  alias Mix.Tasks.Format
   alias Rewrite.Source
   alias Rewrite.TextDiff
   alias Sourceror.Zipper
@@ -87,7 +87,7 @@ defmodule Rewrite.Source do
           {code, Sourceror.parse_string!(code)}
 
         ast ->
-          {Sourceror.to_string(ast, DotFormatter.opts()), ast}
+          {format(ast), ast}
       end
 
     path = Keyword.get(fields, :path, nil)
@@ -195,7 +195,7 @@ defmodule Rewrite.Source do
       iex> File.exists?(path)
       false
       iex> File.read(new_path)
-      {:ok, ":ping"}
+      {:ok, ":ping\n"}
   """
   @spec save(t()) :: :ok | {:error, :nofile | File.posix()}
   def save(%Source{path: nil, updates: []}), do: {:error, :nofile}
@@ -206,7 +206,7 @@ defmodule Rewrite.Source do
 
   def save(%Source{path: path, code: code} = source) do
     with :ok <- mkdir_p(path),
-         :ok <- File.write(path, code) do
+         :ok <- File.write(path, eof_newline(code)) do
       rm(source)
     end
   end
@@ -260,7 +260,7 @@ defmodule Rewrite.Source do
       iex> source.updates
       [{:code, :example, "a + b"}, {:path, :example, nil}]
       iex> source.code
-      "a - b\n"
+      "a - b"
 
   If the new value equal to the current value, no updates will be added.
 
@@ -278,7 +278,7 @@ defmodule Rewrite.Source do
       when is_atom(by) and key in [:ast, :code, :path] do
     legacy = Map.fetch!(source, key)
 
-    value = if key == :code, do: newline(value), else: value
+    value = if key == :code, do: value, else: value
 
     case legacy == value do
       true ->
@@ -304,9 +304,8 @@ defmodule Rewrite.Source do
     %Source{source | ast: ast, code: code}
   end
 
-  defp do_update(source, :ast, ast) do
-    code = ast |> Sourceror.to_string(DotFormatter.opts()) |> newline()
-    %Source{source | ast: ast, code: code}
+  defp do_update(%Source{path: path} = source, :ast, ast) do
+    %Source{source | ast: ast, code: format(ast, path)}
   end
 
   defp do_update(source, :path, path) do
@@ -616,7 +615,11 @@ defmodule Rewrite.Source do
   '''
   @spec diff(t(), keyword()) :: iodata()
   def diff(%Source{} = source, opts \\ []) do
-    TextDiff.format(code(source, 1), code(source), opts)
+    TextDiff.format(
+      source |> code(1) |> eof_newline(),
+      source |> code() |> eof_newline(),
+      opts
+    )
   end
 
   defp get_modules(code) when is_binary(code) do
@@ -639,6 +642,24 @@ defmodule Rewrite.Source do
     |> Enum.uniq()
   end
 
+  defp format(ast, file \\ nil) do
+    {_formatter, opts} = Format.formatter_for_file(file || "source.ex")
+
+    algebra =
+      case Keyword.get(opts, :plugins) do
+        [FreedomFormatter] ->
+          # For now just a workaround to support the FreedomFormatter.
+          FreedomFormatter.Formatter.to_algebra(ast, opts)
+
+        _else ->
+          Code.quoted_to_algebra(ast, opts)
+      end
+
+    algebra
+    |> Inspect.Algebra.format(Keyword.get(opts, :line_length, 98))
+    |> IO.iodata_to_binary()
+  end
+
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
 
   defp hash(nil, code), do: :crypto.hash(:md5, code)
@@ -655,5 +676,5 @@ defmodule Rewrite.Source do
 
   defp not_empty?(enum), do: not Enum.empty?(enum)
 
-  defp newline(string), do: String.trim_trailing(string) <> "\n"
+  defp eof_newline(string), do: String.trim_trailing(string) <> "\n"
 end

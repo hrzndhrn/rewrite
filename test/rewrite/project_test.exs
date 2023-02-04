@@ -364,7 +364,7 @@ defmodule Rewrite.ProjectTest do
 
       assert Project.save(project) == :ok
       refute File.exists?(foo)
-      assert File.read(bar) == {:ok, ":bar"}
+      assert File.read(bar) == {:ok, ":bar\n"}
     end
 
     test "excludes files", %{tmp_dir: tmp_dir} do
