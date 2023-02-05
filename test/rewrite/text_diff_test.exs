@@ -19,7 +19,7 @@ defmodule Rewrite.TextDiffTest do
 
       if IO.ANSI.enabled?() do
         assert output ==
-                 "1  \e[31m - \e[0m\e[90m|\e[0m\e[31mdel\e[0m\n  1\e[32m + \e[0m\e[90m|\e[0m\n"
+                 "1  \e[31m - \e[0m\e[33m|\e[0m\e[31mdel\e[0m\n  1\e[32m + \e[0m\e[33m|\e[0m\n"
       end
 
       assert to_binary(old, new, color: false) == """
@@ -36,8 +36,8 @@ defmodule Rewrite.TextDiffTest do
 
       if IO.ANSI.enabled?() do
         assert output == """
-               1  \e[31m - \e[0m\e[90m|\e[0mone \e[31mthree\e[0m\e[41m \e[0m\e[31m\e[0mtwo
-                 1\e[32m + \e[0m\e[90m|\e[0mone two\e[32m\e[0m\e[42m \e[0m\e[32mthree\e[0m
+               1  \e[31m - \e[0m\e[33m|\e[0mone \e[31mthree\e[0m\e[41m \e[0m\e[31m\e[0mtwo
+                 1\e[32m + \e[0m\e[33m|\e[0mone two\e[32m\e[0m\e[42m \e[0m\e[32mthree\e[0m
                """
       end
 
@@ -108,14 +108,7 @@ defmodule Rewrite.TextDiffTest do
       7 2   |ggg
       """
 
-      # assert TextDiff.format(old, new)
-
-      if IO.ANSI.enabled?() do
-        assert to_binary(old, new) == """
-               1  \e[31m - \e[0m\e[90m|\e[0mone \e[31mthree\e[0m\e[41m \e[0m\e[31m\e[0mtwo
-                 1\e[32m + \e[0m\e[90m|\e[0mone two\e[32m\e[0m\e[42m \e[0m\e[32mthree\e[0m
-               """
-      end
+      assert TextDiff.format(old, new)
 
       assert to_binary(old, new, color: false) == exp
     end
@@ -533,8 +526,8 @@ defmodule Rewrite.TextDiffTest do
 
         if IO.ANSI.enabled?() do
           assert output == """
-                 1  \e[31m - \e[0m\e[90m|\e[0mone three\e[31m\e[0m\e[41m \e[0m\e[31mtwo\e[0m
-                   1\e[32m + \e[0m\e[90m|\e[0mone t\e[32mwo\e[0m\e[42m \e[0m\e[32mt\e[0mhree
+                 1  \e[31m - \e[0m\e[33m|\e[0mone three\e[31m\e[0m\e[41m \e[0m\e[31mtwo\e[0m
+                   1\e[32m + \e[0m\e[33m|\e[0mone t\e[32mwo\e[0m\e[42m \e[0m\e[32mt\e[0mhree
                  """
         end
 
