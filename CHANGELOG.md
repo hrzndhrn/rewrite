@@ -3,12 +3,13 @@
 ## 0.4.2 - 2023/02/05
 
 + Add fix for `Rewrite.Source.format/2`.
++ Pin `sourceror` to 0.11.2.
 
 ## 0.4.1 - 2023/02/04
 
 + Support the `FreedomFormatter`.
-+ Update `Rewrite.Source.save/1` to add a neline at the of file. Previously a newline
-  was added at `Rewrite.Source.update/3`.
++ Update `Rewrite.Source.save/1` to add a neline at the of file. Previously a
+  newline was added at `Rewrite.Source.update/3`.
 
 ## 0.4.0 - 2023/02/02
 

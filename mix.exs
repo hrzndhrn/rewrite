@@ -68,7 +68,8 @@ defmodule Rewrite.MixProject do
   defp deps do
     [
       {:glob_ex, "~> 0.1"},
-      {:sourceror, "~> 0.12"},
+      # {:sourceror, "~> 0.12"},
+      {:sourceror, "0.11.2"},
       # dev/test
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
