@@ -543,7 +543,5 @@ defmodule Rewrite.TextDiffTest do
     old
     |> TextDiff.format(new, opts)
     |> IO.iodata_to_binary()
-
-    # |> tap(fn result -> IO.puts(result) end)
   end
 end
