@@ -645,18 +645,27 @@ defmodule Rewrite.Source do
   defp format(ast, file \\ nil) do
     {_formatter, opts} = Format.formatter_for_file(file || "source.ex")
 
-    algebra =
+    line_length = Keyword.get(opts, :line_length, 98)
+
+    extract_comments_opts = [collapse_comments: true, correct_lines: true] ++ opts
+
+    {ast, comments} = Sourceror.Comments.extract_comments(ast, extract_comments_opts)
+
+    to_algebra_opts = Keyword.merge(opts, comments: comments, escape: false)
+
+    quoted_to_algebra =
       case Keyword.get(opts, :plugins) do
         [FreedomFormatter] ->
           # For now just a workaround to support the FreedomFormatter.
-          FreedomFormatter.Formatter.to_algebra(ast, opts)
+          &FreedomFormatter.Formatter.to_algebra/2
 
         _else ->
-          Code.quoted_to_algebra(ast, opts)
+          &Code.quoted_to_algebra/2
       end
 
-    algebra
-    |> Inspect.Algebra.format(Keyword.get(opts, :line_length, 98))
+    ast
+    |> quoted_to_algebra.(to_algebra_opts)
+    |> Inspect.Algebra.format(line_length)
     |> IO.iodata_to_binary()
   end
 
