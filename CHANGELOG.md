@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - unreleased
+
++ Unpin `sourceror`.
+
 ## 0.4.2 - 2023/02/05
 
 + Add fix for `Rewrite.Source.format/2`.
