@@ -24,7 +24,8 @@ defmodule Rewrite.Source do
     :modules,
     :owner,
     updates: [],
-    issues: []
+    issues: [],
+    private: %{}
   ]
 
   @typedoc """
@@ -53,7 +54,8 @@ defmodule Rewrite.Source do
           updates: [{kind(), by(), String.t()}],
           issues: [issue()],
           from: from(),
-          owner: module()
+          owner: module(),
+          private: map()
         }
 
   @doc ~S'''
@@ -246,6 +248,26 @@ defmodule Rewrite.Source do
   """
   @spec add_issue(t(), issue()) :: t()
   def add_issue(%Source{} = source, issue), do: add_issues(source, [issue])
+
+  @doc """
+  Assigns a private `key` and `value` to the `source`.
+
+  This is not used or accessed by Rewrite, but is intended as private storage
+  for users or libraries that wish to store additional data about a source.
+
+  ## Examples
+
+      iex> source =
+      ...>   "a + b"
+      ...>   |> Source.from_string()
+      ...>   |> Source.put_private(:origin, :example)
+      iex> source.private[:origin]
+      :example
+  """
+  @spec put_private(t(), key :: term(), value :: term()) :: t()
+  def put_private(%Source{} = source, key, value) do
+    Map.update!(source, :private, &Map.put(&1, key, value))
+  end
 
   @doc ~S"""
   Updates the `code` or the `path` of a `source`.
