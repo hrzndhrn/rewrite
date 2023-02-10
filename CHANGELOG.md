@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.4.2 - unreleased
+## Unreleased
 
-+ Unpin `sourceror`.
++ Update `sourceror` to ~> 0.12.
++ Add `Rewrite.Source.put_private/3`, which allows for storing arbitrary data
+  on a source.
 
 ## 0.4.2 - 2023/02/05
 

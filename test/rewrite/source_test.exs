@@ -244,6 +244,15 @@ defmodule Rewrite.SourceTest do
     end
   end
 
+  describe "put_private/3" do
+    test "updates the private map" do
+      source = Source.from_string("a + b\n")
+
+      assert source = Source.put_private(source, :any_key, :any_value)
+      assert source.private[:any_key] == :any_value
+    end
+  end
+
   defp hash(path, code), do: :crypto.hash(:md5, path <> code)
 
   defp assert_source(%Source{} = source, expected) do
@@ -254,6 +263,7 @@ defmodule Rewrite.SourceTest do
     assert source.modules == expected.modules
     assert source.updates == Map.get(expected, :updates, [])
     assert source.issues == Map.get(expected, :issues, [])
+    assert source.private == Map.get(expected, :private, %{})
 
     if Map.has_key?(expected, :ast) do
       assert source.ast == expected.ast
