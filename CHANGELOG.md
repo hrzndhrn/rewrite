@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2023/02/10
 
 + Update `sourceror` to ~> 0.12.
 + Add `Rewrite.Source.put_private/3`, which allows for storing arbitrary data
