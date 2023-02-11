@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1 - unreleased
+
++ Refactor source formatting.
+
 ## 0.6.0 - 2023/02/14
 
 + Add option `:colorizer` to `Rewrite.TextDiff.format/3`.

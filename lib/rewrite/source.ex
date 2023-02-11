@@ -137,7 +137,7 @@ defmodule Rewrite.Source do
   """
   @spec from_ast(Macro.t(), nil | Path.t(), module()) :: t()
   def from_ast(ast, path \\ nil, owner \\ Rewrite) do
-    new(ast: ast, path: path, owner: owner, from: :string)
+    new(ast: ast, path: path, owner: owner, from: :ast)
   end
 
   @doc """
@@ -665,30 +665,42 @@ defmodule Rewrite.Source do
   end
 
   defp format(ast, file \\ nil) do
-    {_formatter, opts} = Format.formatter_for_file(file || "source.ex")
+    ext = Path.extname(file || "source.ex")
+    {_formatter, formatter_opts} = Format.formatter_for_file(file || "source.ex")
+    plugins = plugins_for_extension(formatter_opts, ext)
 
-    line_length = Keyword.get(opts, :line_length, 98)
-
-    extract_comments_opts = [collapse_comments: true, correct_lines: true] ++ opts
-
-    {ast, comments} = Sourceror.Comments.extract_comments(ast, extract_comments_opts)
-
-    to_algebra_opts = Keyword.merge(opts, comments: comments, escape: false)
-
-    quoted_to_algebra =
-      case Keyword.get(opts, :plugins) do
-        [FreedomFormatter] ->
+    {quoted_to_algebra, plugins} =
+      case plugins do
+        [FreedomFormatter | plugins] ->
           # For now just a workaround to support the FreedomFormatter.
-          &FreedomFormatter.Formatter.to_algebra/2
+          {&FreedomFormatter.Formatter.to_algebra/2, plugins}
 
-        _else ->
-          &Code.quoted_to_algebra/2
+        plugins ->
+          {&Code.quoted_to_algebra/2, plugins}
       end
 
-    ast
-    |> quoted_to_algebra.(to_algebra_opts)
-    |> Inspect.Algebra.format(line_length)
-    |> IO.iodata_to_binary()
+    formatter_opts =
+      formatter_opts ++
+        [
+          quoted_to_algebra: quoted_to_algebra,
+          extension: ext,
+          file: file || ""
+        ]
+
+    code = Sourceror.to_string(ast, formatter_opts)
+
+    Enum.reduce(plugins, code, fn plugin, code ->
+      plugin.format(code, formatter_opts)
+    end)
+  end
+
+  defp plugins_for_extension(formatter_opts, ext) do
+    formatter_opts
+    |> Keyword.get(:plugins, [])
+    |> Enum.filter(fn plugin ->
+      Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
+        ext in List.wrap(plugin.features(formatter_opts)[:extensions])
+    end)
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)

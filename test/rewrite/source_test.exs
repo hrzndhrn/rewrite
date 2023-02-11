@@ -1,6 +1,7 @@
 defmodule Rewrite.SourceTest do
   use ExUnit.Case
 
+  import ExUnit.CaptureIO
   alias Rewrite.Source
   alias Sourceror.Zipper
 
@@ -27,9 +28,96 @@ defmodule Rewrite.SourceTest do
     test "creates a source from code" do
       code = "def foo, do: :foo\n"
       source = Source.from_string(code)
+
       assert source.code == code
       assert source.path == nil
       assert source.modules == []
+    end
+  end
+
+  describe "from_ast" do
+    test "creates a source from ast" do
+      code = "def foo, do: :foo"
+      ast = Sourceror.parse_string!(code)
+      source = Source.from_ast(ast)
+
+      assert source.code == code
+      assert source.path == nil
+      assert source.modules == []
+    end
+
+    test "formats the code" do
+      code = """
+      [
+        1,
+      ]
+      """
+
+      source = code |> Sourceror.parse_string!() |> Source.from_ast()
+
+      assert source.code == """
+             [
+               1
+             ]\
+             """
+    end
+
+    @tag :tmp_dir
+    test "formats the code with plugin", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!(".formatter.exs", """
+        [plugins: [FakeFormatter]]
+        """)
+
+        code = """
+        [
+          1,
+        ]
+        """
+
+        {source, io} = with_io(fn -> code |> Sourceror.parse_string!() |> Source.from_ast() end)
+
+        assert io == "FakeFormatter.format/2\n"
+
+        assert source.code == """
+               [
+                 1
+               ]\
+               """
+      end)
+    end
+
+    @tag :tmp_dir
+    test "formats the code with plugins", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!(".formatter.exs", """
+        # The FreedomFormatter is also a fake.
+        [plugins: [FreedomFormatter, FakeFormatter]]
+        """)
+
+        code = """
+        [
+          1,
+        ]
+        """
+
+        {source, io} = with_io(fn -> code |> Sourceror.parse_string!() |> Source.from_ast() end)
+
+        assert io == "FakeFormatter.format/2\n"
+
+        assert source.code == """
+               [
+                 1,
+               ]\
+               """
+      end)
+    end
+  end
+
+  describe "owner/1" do
+    test "returns the owner of a source" do
+      source = Source.from_string(":ok")
+      assert Source.owner(source) == Rewrite
     end
   end
 
