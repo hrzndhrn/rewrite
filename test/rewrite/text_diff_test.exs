@@ -537,6 +537,27 @@ defmodule Rewrite.TextDiffTest do
                """
       end
     end
+
+    test "accepts alternate :colorizer" do
+      opts = [colorizer: fn str, color -> ["[#{color}:", str, "]"] end]
+
+      old = "one three two"
+      new = "one two three"
+
+      assert output = to_binary(old, new, opts)
+
+      if IO.ANSI.enabled?() do
+        assert output == """
+               1  [red: - ][yellow:|]one [red:three][red_background: ][red:]two
+                 1[green: + ][yellow:|]one two[green:][green_background: ][green:three]
+               """
+      end
+
+      assert to_binary(old, new, [color: false] ++ opts) == """
+             1   - |one three two
+               1 + |one two three
+             """
+    end
   end
 
   defp to_binary(old, new, opts \\ []) do
