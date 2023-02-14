@@ -70,6 +70,7 @@ defmodule Rewrite.TextDiff do
     line: 1,
     line_numbers: true,
     tokenizer: {__MODULE__, :default_tokenizer, []},
+    colorizer: {__MODULE__, :default_colorizer, []},
     format: @format
   ]
 
@@ -95,6 +96,11 @@ defmodule Rewrite.TextDiff do
       `three`, instead of keeping the `t`, removing `wo`, and adding `hree`.
       `:tokenizer` may be a function that accepts a single argument or an MFA
       tuple, where the line of text will be prepended to the given arguments.
+    * `:colorizer` - a function that accepts a string and a color token (`:red`,
+      `:green`, etc.) and returns iodata with that formatting applied. May be
+      a function that accepts 2 arguments or an MFA tuple, where the string and
+      color will be prepended to the given arguments. Defaults to a colorizer
+      based on `IO.ANSI.format/1`.
     * `:format` - optional keyword list of formatting options. See "Formatting"
       below.
 
@@ -374,7 +380,12 @@ defmodule Rewrite.TextDiff do
 
   defp line_diff(del, ins, opts) do
     tokenizer = Keyword.fetch!(opts, :tokenizer)
-    diff = List.myers_difference(tokenize(del, tokenizer), tokenize(ins, tokenizer))
+
+    diff =
+      List.myers_difference(
+        apply_option_fun(tokenizer, [del]),
+        apply_option_fun(tokenizer, [ins])
+      )
 
     Enum.reduce(diff, {[], []}, fn {op, iodata}, {del, ins} ->
       str = IO.iodata_to_binary(iodata)
@@ -388,6 +399,8 @@ defmodule Rewrite.TextDiff do
   end
 
   defp colorize(str, kind, space, opts) do
+    colorizer = Keyword.fetch!(opts, :colorizer)
+
     case {get_color(opts, kind), space} do
       {nil, _} ->
         str
@@ -397,14 +410,14 @@ defmodule Rewrite.TextDiff do
         |> String.split(~r/[\t\s]+/, include_captures: true)
         |> Enum.map(fn
           <<start::binary-size(1), _::binary>> = str when start in ["\t", "\s"] ->
-            IO.ANSI.format([space_color, str])
+            apply_option_fun(colorizer, [str, space_color])
 
           str ->
-            IO.ANSI.format([text_color, str])
+            apply_option_fun(colorizer, [str, text_color])
         end)
 
       {%{text: text_color}, _} ->
-        IO.ANSI.format([text_color, str])
+        apply_option_fun(colorizer, [str, text_color])
     end
   end
 
@@ -465,14 +478,22 @@ defmodule Rewrite.TextDiff do
     end
   end
 
-  defp tokenize(line, fun) when is_function(fun, 1), do: fun.(line)
+  defp apply_option_fun(fun, args) when is_function(fun) and is_list(args) do
+    apply(fun, args)
+  end
 
-  defp tokenize(line, {m, f, a}) when is_atom(m) and is_atom(f) and is_list(a) do
-    apply(m, f, [line | a])
+  defp apply_option_fun({m, f, a}, args)
+       when is_atom(m) and is_atom(f) and is_list(a) and is_list(args) do
+    apply(m, f, args ++ a)
   end
 
   @doc false
   def default_tokenizer(line) do
     String.split(line, ~r/[^a-zA-Z0-9_]/, include_captures: true, trim: true)
+  end
+
+  @doc false
+  def default_colorizer(str, color) do
+    IO.ANSI.format([color, str])
   end
 end
