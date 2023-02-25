@@ -330,6 +330,12 @@ defmodule Rewrite.SourceTest do
       assert Source.modules(source, 2) == [TheApp.Simple]
       assert Source.modules(source, 3) == [AnApp.Simple]
     end
+
+    test "returns the modules after filtering out ast" do
+      path = "test/fixtures/source/module_ast_contained.ex"
+      source = Source.read!(path)
+      assert Source.modules(source, 1) == [ModuleAstContained]
+    end
   end
 
   describe "put_private/3" do
