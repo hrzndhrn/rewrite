@@ -17,7 +17,7 @@ defmodule Rewrite.ProjectTest do
     test "creates a project from wildcard" do
       inputs = ["test/fixtures/source/*.ex"]
       assert project = Project.read!(inputs)
-      assert Enum.count(project.sources) == 3
+      assert Enum.count(project.sources) == 4
     end
 
     test "creates a project from wildcards" do
@@ -29,7 +29,7 @@ defmodule Rewrite.ProjectTest do
     test "creates a project from glob" do
       inputs = [GlobEx.compile!("test/fixtures/source/*.ex")]
       assert project = Project.read!(inputs)
-      assert Enum.count(project.sources) == 3
+      assert Enum.count(project.sources) == 4
     end
 
     test "creates a project from globs" do
