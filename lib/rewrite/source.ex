@@ -662,6 +662,7 @@ defmodule Rewrite.Source do
     end)
     |> elem(1)
     |> Enum.uniq()
+    |> Enum.filter(&is_atom/1)
   end
 
   defp format(ast, file \\ nil) do
@@ -704,6 +705,8 @@ defmodule Rewrite.Source do
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
+
+  defp concat(ast), do: ast
 
   defp hash(nil, code), do: :crypto.hash(:md5, code)
 
