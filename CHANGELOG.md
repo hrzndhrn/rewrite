@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.1 - 2023/02/25
+## 0.6.1 - 2023/02/26
 
 + Refactor source formatting.
 
