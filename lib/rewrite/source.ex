@@ -665,10 +665,10 @@ defmodule Rewrite.Source do
     |> Enum.filter(&is_atom/1)
   end
 
-  defp format(ast, file \\ nil) do
-    ext = Path.extname(file || "source.ex")
-    {_formatter, formatter_opts} = Format.formatter_for_file(file || "source.ex")
-    plugins = plugins_for_extension(formatter_opts, ext)
+  defp format(ast, file \\ "source.ex") do
+    ext = Path.extname(file)
+    {_formatter, formatter_opts} = Format.formatter_for_file(file)
+    plugins = plugins_for_ext(formatter_opts, ext)
 
     {quoted_to_algebra, plugins} =
       case plugins do
@@ -685,7 +685,7 @@ defmodule Rewrite.Source do
         [
           quoted_to_algebra: quoted_to_algebra,
           extension: ext,
-          file: file || ""
+          file: file
         ]
 
     code = Sourceror.to_string(ast, formatter_opts)
@@ -695,7 +695,7 @@ defmodule Rewrite.Source do
     end)
   end
 
-  defp plugins_for_extension(formatter_opts, ext) do
+  defp plugins_for_ext(formatter_opts, ext) do
     formatter_opts
     |> Keyword.get(:plugins, [])
     |> Enum.filter(fn plugin ->
