@@ -667,7 +667,7 @@ defmodule Rewrite.Source do
 
   defp format(ast, file \\ "source.ex", formatter_opts \\ nil) do
     formatter_opts =
-      unless formatter_opts do
+      if is_nil(formatter_opts) do
         {_formatter, formatter_opts} = Format.formatter_for_file(file)
         formatter_opts
       else
