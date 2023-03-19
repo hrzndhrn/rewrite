@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 - 2023/03/19
+
++ Search for `:dot_formatter_opts` in `Source.private` when formatting.
+
 ## 0.6.1 - 2023/02/26
 
 + Refactor source formatting.
