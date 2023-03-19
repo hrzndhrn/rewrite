@@ -326,8 +326,8 @@ defmodule Rewrite.Source do
     %Source{source | ast: ast, code: code}
   end
 
-  defp do_update(%Source{path: path} = source, :ast, ast) do
-    %Source{source | ast: ast, code: format(ast, path)}
+  defp do_update(%Source{path: path, private: private} = source, :ast, ast) do
+    %Source{source | ast: ast, code: format(ast, path, Map.get(private, :dot_formatter_opts))}
   end
 
   defp do_update(source, :path, path) do
@@ -665,9 +665,16 @@ defmodule Rewrite.Source do
     |> Enum.filter(&is_atom/1)
   end
 
-  defp format(ast, file \\ "source.ex") do
+  defp format(ast, file \\ "source.ex", formatter_opts \\ nil) do
+    formatter_opts =
+      if is_nil(formatter_opts) do
+        {_formatter, formatter_opts} = Format.formatter_for_file(file)
+        formatter_opts
+      else
+        formatter_opts
+      end
+
     ext = Path.extname(file)
-    {_formatter, formatter_opts} = Format.formatter_for_file(file)
     plugins = plugins_for_ext(formatter_opts, ext)
 
     {quoted_to_algebra, plugins} =
