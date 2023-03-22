@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 - 2023/03/22
+
++ Fix `Source.format/3`.
+
 ## 0.6.2 - 2023/03/19
 
 + Search for `:dot_formatter_opts` in `Source.private` when formatting.

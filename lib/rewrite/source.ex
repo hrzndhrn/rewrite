@@ -665,7 +665,9 @@ defmodule Rewrite.Source do
     |> Enum.filter(&is_atom/1)
   end
 
-  defp format(ast, file \\ "source.ex", formatter_opts \\ nil) do
+  defp format(ast, file \\ nil, formatter_opts \\ nil) do
+    file = file || "source.ex"
+
     formatter_opts =
       if is_nil(formatter_opts) do
         {_formatter, formatter_opts} = Format.formatter_for_file(file)
