@@ -347,13 +347,10 @@ defmodule Rewrite.SourceTest do
     end
   end
 
-  defp hash(path, code), do: :crypto.hash(:md5, path <> code)
-
   defp assert_source(%Source{} = source, expected) do
     assert is_reference(source.id)
     assert source.path == expected.path
     assert source.code == expected.code
-    assert source.hash == hash(expected.path, expected.code)
     assert source.modules == expected.modules
     assert source.updates == Map.get(expected, :updates, [])
     assert source.issues == Map.get(expected, :issues, [])

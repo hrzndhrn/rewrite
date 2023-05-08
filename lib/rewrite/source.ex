@@ -154,11 +154,18 @@ defmodule Rewrite.Source do
     source
     |> Map.put(:path, nil)
     |> update_updates({:path, by, legacy})
-    |> update_hash()
   end
 
   @doc ~S"""
   Saves the source to disk.
+
+  Returns `{:ok, source}` when the file was written successfully. The returned
+  `source` does not include any previous changes or issues.
+
+  Returns `{:error, :nofile}` if the current `path` is nil.
+
+  Returns `{:error, :changed}` if the file was changed since reading. See also
+  `file_updated?/1`.
 
   If the source `:path` was updated then the old file will be deleted. The
   original file will also deleted when the `source` was marked as deleted with
@@ -174,10 +181,13 @@ defmodule Rewrite.Source do
       iex> path = "tmp/foo.ex"
       iex> File.write(path, ":foo")
       iex> source = path |> Source.read!() |> Source.update(:test, code: ":bar")
-      iex> Source.save(source)
-      :ok
+      iex> Source.updated?(source)
+      true
+      iex> {:ok, source} = Source.save(source)
       iex> File.read(path)
       {:ok, ":bar\n"}
+      iex> Source.updated?(source)
+      false
       iex> source |> Source.del() |> Source.save()
       iex> File.exists?(path)
       false
@@ -186,30 +196,45 @@ defmodule Rewrite.Source do
       iex> Source.save(source)
       {:error, :nofile}
       iex> source |> Source.update(:test, path: "tmp/bar.ex") |> Source.save()
-      :ok
+      iex> File.read("tmp/bar.ex")
+      {:ok, ":bar\n"}
 
       iex> path = "tmp/ping.ex"
       iex> File.write(path, ":ping")
-      iex> source = path |> Source.read!()
+      iex> source = Source.read!(path)
       iex> new_path = "tmp/pong.ex"
       iex> source |> Source.update(:test, path: new_path) |> Source.save()
-      :ok
       iex> File.exists?(path)
       false
       iex> File.read(new_path)
       {:ok, ":ping\n"}
+
+      iex> path = "tmp/ping.ex"
+      iex> File.write(path, ":ping")
+      iex> source = path |> Source.read!() |> Source.update(:test, code: "peng")
+      iex> File.write(path, ":pong")
+      iex> Source.save(source)
+      {:error, :changed}
+      iex> {:ok, _source} = Source.save(source, :force)
   """
-  @spec save(t()) :: :ok | {:error, :nofile | File.posix()}
-  def save(%Source{path: nil, updates: []}), do: {:error, :nofile}
+  @spec save(t(), force :: [nil|:force]) :: {:ok, t()} | {:error, :nofile | :changed | File.posix()}
+  def save(source, force \\ nil)
 
-  def save(%Source{updates: []}), do: :ok
+  def save(%Source{path: nil, updates: []}, _force), do: {:error, :nofile}
 
-  def save(%Source{path: nil} = source), do: rm(source)
+  def save(%Source{updates: []} = source, _force), do: {:ok, source}
 
-  def save(%Source{path: path, code: code} = source) do
-    with :ok <- mkdir_p(path),
-         :ok <- File.write(path, eof_newline(code)) do
-      rm(source)
+  def save(%Source{path: nil} = source, _force), do: maybe_rm(source)
+
+  def save(%Source{path: path, code: code} = source, force) when force in [nil, :force] do
+    if file_changed?(source) && is_nil(force) do
+      {:error, :changed}
+    else
+      with :ok <- mkdir_p(path),
+           :ok <- File.write(path, eof_newline(code)),
+           :ok <- maybe_rm(source) do
+        {:ok, %{source | hash: hash(path, code), updates: [], issues: []}}
+      end
     end
   end
 
@@ -217,7 +242,7 @@ defmodule Rewrite.Source do
     path |> Path.dirname() |> File.mkdir_p()
   end
 
-  defp rm(source) do
+  defp maybe_rm(source) do
     case {Source.updated?(source, :path), Source.path(source, 1)} do
       {false, _path} -> :ok
       {true, nil} -> :ok
@@ -317,7 +342,6 @@ defmodule Rewrite.Source do
         |> do_update(key, value)
         |> update_updates(update)
         |> update_modules(key)
-        |> update_hash()
     end
   end
 
@@ -370,6 +394,43 @@ defmodule Rewrite.Source do
       {^kind, _by, _value} -> true
       _update -> false
     end)
+  end
+
+  @doc """
+  Returns `true` if the file has been modified since it was read.
+
+  If the key `:from` does not contain `:file` the function returns `false`.
+
+  ## Examples
+
+      iex> File.write("tmp/code.ex", "a = 24")
+      iex> source = Source.read!("tmp/code.ex")
+      iex> Source.file_changed?(source)
+      false
+      iex> File.write("tmp/code.ex", "a = 42")
+      iex> Source.file_changed?(source)
+      true
+      iex> source = Source.update(source, :test, path: nil)
+      iex> Source.file_changed?(source)
+      true
+      iex> File.write("tmp/code.ex", "a = 24")
+      iex> Source.file_changed?(source)
+      false
+
+      iex> source = Source.from_string("a = 77")
+      iex> Source.file_changed?(source)
+      false
+  """
+  @spec file_changed?(Source.t()) :: boolean
+  def file_changed?(%Source{from: from}) when from != :file, do: false
+
+  def file_changed?(%Source{} = source) do
+    path = path(source, 1)
+
+    case File.read(path) do
+      {:ok, content} -> hash(path, content) != source.hash
+      _error -> true
+    end
   end
 
   @doc """
@@ -644,6 +705,22 @@ defmodule Rewrite.Source do
     )
   end
 
+  @doc ~S'''
+  Calculates the current hash from the given `source`.
+
+  ## Examples
+
+      iex> source = Source.from_string("""
+      ...> defmodule Foo do
+      ...>   def bar, do: :bar
+      ...> end
+      ...> """)
+      iex> Source.hash(source)
+      <<76, 24, 5, 252, 117, 230, 0, 217, 129, 150, 68, 248, 6, 48, 72, 46>>
+  '''
+  @spec hash(Source.t()) :: binary()
+  def hash(%Source{path: path, code: code}), do: hash(path, code)
+
   defp get_modules(code) when is_binary(code) do
     code
     |> Sourceror.parse_string!()
@@ -720,10 +797,6 @@ defmodule Rewrite.Source do
   defp hash(nil, code), do: :crypto.hash(:md5, code)
 
   defp hash(path, code), do: :crypto.hash(:md5, path <> code)
-
-  defp update_hash(%Source{path: path, code: code} = source) do
-    %{source | hash: hash(path, code)}
-  end
 
   defp update_updates(%Source{updates: updates} = source, update) do
     %{source | updates: [update | updates]}
