@@ -104,8 +104,10 @@ defmodule Rewrite.Project do
   @doc """
   Returns the `%Rewrite.Source{}` for the given `path`.
 
-  Returns an `:ok` tuple with the found source, if no or multiple sources are
+  Returns an `:ok` tuple with the found source, if not exactly one source is
   available an `:error` is returned.
+
+  See also `sources/2` to get a list of sources for a given `path`.
   """
   @spec source(t(), Path.t()) :: {:ok, Source.t()} | :error
   def source(%Project{} = project, path) do
@@ -303,7 +305,7 @@ defmodule Rewrite.Project do
   @doc """
   Saves all sources in the `project` to disk.
 
-  This function call `Rewrite.Source.save/1` on all sources in the `project`.
+  This function calls `Rewrite.Source.save/1` on all sources in the `project`.
 
   The optional second argument accepts a list of paths for files to be excluded.
   """
