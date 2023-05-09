@@ -165,7 +165,8 @@ defmodule Rewrite.Source do
   Returns `{:error, :nofile}` if the current `path` is nil.
 
   Returns `{:error, :changed}` if the file was changed since reading. See also
-  `file_updated?/1`.
+  `file_updated?/1`. The function accepts `:force` as a second argument to force
+  overwriting a changed file.
 
   If the source `:path` was updated then the old file will be deleted. The
   original file will also deleted when the `source` was marked as deleted with
@@ -217,14 +218,17 @@ defmodule Rewrite.Source do
       {:error, :changed}
       iex> {:ok, _source} = Source.save(source, :force)
   """
-  @spec save(t(), force :: [nil|:force]) :: {:ok, t()} | {:error, :nofile | :changed | File.posix()}
+  @spec save(t(), force :: [nil | :force]) ::
+          {:ok, t()} | {:error, :nofile | :changed | File.posix()}
   def save(source, force \\ nil)
 
   def save(%Source{path: nil, updates: []}, _force), do: {:error, :nofile}
 
   def save(%Source{updates: []} = source, _force), do: {:ok, source}
 
-  def save(%Source{path: nil} = source, _force), do: maybe_rm(source)
+  def save(%Source{path: nil} = source, _force) do
+    with :ok <- maybe_rm(source), do: {:ok, source}
+  end
 
   def save(%Source{path: path, code: code} = source, force) when force in [nil, :force] do
     if file_changed?(source) && is_nil(force) do

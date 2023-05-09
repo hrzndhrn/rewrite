@@ -242,6 +242,8 @@ defmodule Rewrite.ProjectTest do
   end
 
   describe "conflicts/1" do
+    @describetag :conflicts
+
     test "returns an emplty map" do
       project =
         Project.from_sources([
@@ -288,6 +290,33 @@ defmodule Rewrite.ProjectTest do
       assert %{"d.exs" => sources} = Project.conflicts(project)
       assert length(sources) == 3
     end
+
+    test "returns conflicts of 2 paths in 4 files" do
+      project =
+        Project.from_sources([
+          Source.from_string(":a", "a.exs"),
+          Source.from_string(":aa", "a.exs"),
+          Source.from_string(":b", "b.exs"),
+          Source.from_string(":bb", "b.exs")
+        ])
+
+      assert %{"a.exs" => as, "b.exs" => bs} = Project.conflicts(project)
+      assert length(as) == 2
+      assert length(bs) == 2
+    end
+
+    test "excludes path" do
+      project =
+        Project.from_sources([
+          Source.from_string(":a", "a.exs"),
+          Source.from_string(":aa", "a.exs"),
+          Source.from_string(":b", "b.exs"),
+          Source.from_string(":bb", "b.exs")
+        ])
+
+      assert %{"b.exs" => bs} = Project.conflicts(project, ["a.exs"])
+      assert length(bs) == 2
+    end
   end
 
   describe "counts/2" do
@@ -325,7 +354,113 @@ defmodule Rewrite.ProjectTest do
     end
   end
 
+  describe "changes/2" do
+    @describetag :tmp_dir
+    @describetag :changes
+
+    test "returns an empty list", %{tmp_dir: tmp_dir} do
+      foo = Path.join(tmp_dir, "foo.ex")
+      bar = Path.join(tmp_dir, "bar.ex")
+      baz = Path.join(tmp_dir, "baz.ex")
+      File.write!(foo, ":foo")
+      File.write!(bar, ":bar")
+      File.write!(baz, ":baz")
+
+      project =
+        Project.from_sources([
+          Source.read!(foo),
+          Source.read!(bar),
+          Source.read!(baz)
+        ])
+
+      assert Project.changes(project) == []
+    end
+
+    test "returns pathes for changed files", %{tmp_dir: tmp_dir} do
+      foo = Path.join(tmp_dir, "foo.ex")
+      bar = Path.join(tmp_dir, "bar.ex")
+      baz = Path.join(tmp_dir, "baz.ex")
+      File.write!(foo, ":foo")
+      File.write!(bar, ":bar")
+      File.write!(baz, ":baz")
+
+      project =
+        Project.from_sources([
+          Source.read!(foo),
+          Source.read!(bar),
+          Source.read!(baz)
+        ])
+
+      File.write!(bar, ":barrr")
+      File.write!(baz, ":bazzz")
+
+      assert Project.changes(project) == [baz, bar]
+    end
+  end
+
   describe "save/2" do
+    @describetag :tmp_dir
+
+    test "saves a source to disk", %{tmp_dir: tmp_dir} do
+      foo = Path.join(tmp_dir, "foo.ex")
+      File.write!(foo, ":foo")
+
+      source = Source.read!(foo)
+      project = Project.from_sources([source])
+      source = Source.update(source, :test, code: ":foofoo\n")
+
+      assert {:ok, project} = Project.save(project, source)
+      assert {:ok, source} = Project.source(project, foo)
+      assert Source.code(source) == File.read!(foo)
+      assert Source.updated?(source) == false
+    end
+
+    test "returns an error when the file was changed", %{tmp_dir: tmp_dir} do
+      foo = Path.join(tmp_dir, "foo.ex")
+      File.write!(foo, ":foo")
+
+      source = Source.read!(foo)
+      project = Project.from_sources([source])
+      source = Source.update(source, :test, code: ":foofoo\n")
+
+      File.write!(foo, ":bar")
+
+      assert Project.save(project, source) == {:error, :changed}
+    end
+
+    test "saves a source to disk by path", %{tmp_dir: tmp_dir} do
+      foo = Path.join(tmp_dir, "foo.ex")
+      File.write!(foo, ":foo")
+
+      source = Source.read!(foo)
+      project = Project.from_sources([source])
+      source = Source.update(source, :test, code: ":foofoo\n")
+      project = Project.update(project, source)
+
+      assert {:ok, project} = Project.save(project, foo)
+      assert {:ok, source} = Project.source(project, foo)
+      assert Source.code(source) == File.read!(foo)
+      assert Source.updated?(source) == false
+    end
+
+    test "returns an error for missing source" do
+      project = Project.from_sources([])
+
+      assert Project.save(project, "source.ex") == {:error, :nosource}
+    end
+
+    test "returns an error for conflicting sources" do
+      project =
+        Project.from_sources([
+          Source.from_string(":foo", "a.ex"),
+          Source.from_string(":bar", "a.ex")
+        ])
+
+      assert Project.save(project, "a.ex") == {:error, :conflict}
+    end
+  end
+
+  describe "save_all/2" do
     @describetag :tmp_dir
 
     test "writes sources to disk", %{tmp_dir: tmp_dir} do
@@ -336,8 +471,9 @@ defmodule Rewrite.ProjectTest do
           ":foo" |> Source.from_string(path) |> Source.update(Test, code: ":test")
         ])
 
-      assert Project.save(project) == :ok
-      assert File.read(path) == {:ok, ":test\n"}
+      assert {:ok, project} = Project.save_all(project)
+      assert File.read!(path) ==  ":test\n"
+      assert project |> Project.source!(path) |> Source.updated?() == false
     end
 
     test "creates dir", %{tmp_dir: tmp_dir} do
@@ -348,8 +484,8 @@ defmodule Rewrite.ProjectTest do
           ":foo\n" |> Source.from_string() |> Source.update(Test, path: path)
         ])
 
-      assert Project.save(project) == :ok
-      assert File.read(path) == {:ok, ":foo\n"}
+      assert {:ok, _project} = Project.save_all(project)
+      assert File.read!(path) == ":foo\n"
     end
 
     test "removes old file", %{tmp_dir: tmp_dir} do
@@ -362,9 +498,9 @@ defmodule Rewrite.ProjectTest do
           foo |> Source.read!() |> Source.update(:test, path: bar)
         ])
 
-      assert Project.save(project) == :ok
+      assert {:ok, _project} = Project.save_all(project)
       refute File.exists?(foo)
-      assert File.read(bar) == {:ok, ":bar\n"}
+      assert File.read!(bar) == ":bar\n"
     end
 
     test "excludes files", %{tmp_dir: tmp_dir} do
@@ -377,7 +513,7 @@ defmodule Rewrite.ProjectTest do
           foo |> Source.read!() |> Source.update(:test, path: bar)
         ])
 
-      assert Project.save(project, [bar]) == :ok
+      assert {:ok, _project} = Project.save_all(project, exclude: [bar])
       assert File.exists?(foo)
     end
 
@@ -390,7 +526,7 @@ defmodule Rewrite.ProjectTest do
           path |> Source.read!() |> Source.del()
         ])
 
-      assert Project.save(project, ["bar.ex"]) == :ok
+      assert {:ok, _project} = Project.save_all(project)
       refute File.exists?("foo.ex")
     end
 
@@ -404,11 +540,12 @@ defmodule Rewrite.ProjectTest do
           path |> Source.read!() |> Source.update(:test, code: ":new")
         ])
 
-      assert Project.save(project) == {:error, :conflicts}
-      assert Project.save(project, [path]) == :ok
+      assert {:error, conflicts: conflicts} = Project.save_all(project)
+      assert Map.keys(conflicts) == [path]
+      assert {:ok, _project} = Project.save_all(project, exclude: [path])
     end
 
-    test "returns {:error, errors}", %{tmp_dir: tmp_dir} do
+    test "returns {:error, errors, project}", %{tmp_dir: tmp_dir} do
       path = Path.join(tmp_dir, "foo.ex")
       File.write!(path, ":bar")
       System.cmd("chmod", ["-w", path])
@@ -418,13 +555,13 @@ defmodule Rewrite.ProjectTest do
           path |> Source.read!() |> Source.update(:test, code: ":new")
         ])
 
-      assert Project.save(project) == {:error, [{path, :eacces}]}
+      assert {:error, [eacces: ^path], _project} = Project.save_all(project)
     end
 
     test "ignores sources without path" do
       project = Project.from_sources([Source.from_string(":a")])
 
-      assert Project.save(project) == :ok
+      assert {:ok, _project} = Project.save_all(project)
     end
 
     test "does nothing without updates", %{tmp_dir: tmp_dir} do
@@ -433,7 +570,31 @@ defmodule Rewrite.ProjectTest do
 
       project = Project.from_sources([Source.read!(path)])
 
-      assert Project.save(project) == :ok
+      assert {:ok, saved} = Project.save_all(project)
+      assert project == saved
+    end
+
+    test "returns {:error, errors, project} for changed files", %{tmp_dir: tmp_dir} do
+      foo = Path.join(tmp_dir, "foo.ex")
+      bar = Path.join(tmp_dir, "bar.ex")
+      File.write!(foo, ":foo")
+      File.write!(bar, ":bar")
+
+      project = Project.from_sources([
+        foo |> Source.read!() |> Source.update(:test, code: ":up"),
+        bar |> Source.read!() |> Source.update(:test, code: ":barbar")
+      ])
+
+      File.write!(foo, ":foofoo")
+
+      assert {:error, errors, project} = Project.save_all(project)
+      assert errors == [changed: foo]
+      assert File.read!(bar) == ":barbar\n"
+      assert project |> Project.source!(foo) |> Source.updated?() == true
+      assert project |> Project.source!(bar) |> Source.updated?() == false
+
+      assert {:ok, _project} = Project.save_all(project, force: true)
+      assert File.read!(foo) == ":up\n"
     end
   end
 
