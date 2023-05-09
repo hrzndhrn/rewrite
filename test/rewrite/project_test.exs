@@ -472,7 +472,7 @@ defmodule Rewrite.ProjectTest do
         ])
 
       assert {:ok, project} = Project.save_all(project)
-      assert File.read!(path) ==  ":test\n"
+      assert File.read!(path) == ":test\n"
       assert project |> Project.source!(path) |> Source.updated?() == false
     end
 
@@ -580,10 +580,11 @@ defmodule Rewrite.ProjectTest do
       File.write!(foo, ":foo")
       File.write!(bar, ":bar")
 
-      project = Project.from_sources([
-        foo |> Source.read!() |> Source.update(:test, code: ":up"),
-        bar |> Source.read!() |> Source.update(:test, code: ":barbar")
-      ])
+      project =
+        Project.from_sources([
+          foo |> Source.read!() |> Source.update(:test, code: ":up"),
+          bar |> Source.read!() |> Source.update(:test, code: ":barbar")
+        ])
 
       File.write!(foo, ":foofoo")
 
