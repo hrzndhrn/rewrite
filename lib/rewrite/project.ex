@@ -12,27 +12,62 @@ defmodule Rewrite.Project do
   @type id :: reference()
 
   @type t :: %Project{sources: %{id() => Source.t()}}
-
+  @type input :: Path.t() | wildcard() | GlobEx.t()
   @type wildcard :: IO.chardata()
+
+  @doc """
+  Creates an empty project.
+
+  ## Examples
+
+      iex> Project.new()
+      %Project{sources: %{}}
+  """
+  @spec new :: t()
+  def new, do: %Project{}
 
   @doc """
   Creates a `%Project{}` from the given `inputs`.
   """
-  @spec read!(input | [input]) :: t() when input: Path.t() | wildcard() | GlobEx.t()
+  @spec read!(input() | [input()]) :: t()
   def read!(inputs) do
-    inputs =
-      inputs
-      |> List.wrap()
-      |> Enum.map(&compile_globs!/1)
-      |> Enum.flat_map(&GlobEx.ls/1)
-
     sources =
-      Enum.reduce(inputs, %{}, fn path, sources ->
+      inputs
+      |> expand()
+      |> Enum.reduce(%{}, fn path, sources ->
         source = Source.read!(path)
         Map.put(sources, source.id, source)
       end)
 
     struct!(Project, sources: sources)
+  end
+
+  @doc """
+  Reads the given `input`/`inputs` and adds the source/sources to the `project`
+  when not already readed.
+  """
+  @spec read!(t(), input() | [input()]) :: t()
+  def read!(%Project{sources: sources} = project, inputs) do
+    read_files =
+      sources
+      |> Map.values()
+      |> Enum.reduce([], fn source, acc ->
+        if source.from == :file, do: [Source.path(source, 1) | acc], else: acc
+      end)
+
+    sources =
+      inputs
+      |> expand()
+      |> Enum.reduce(sources, fn path, sources ->
+        if path in read_files do
+          sources
+        else
+          source = Source.read!(path)
+          Map.put(sources, source.id, source)
+        end
+      end)
+
+    %{project | sources: sources}
   end
 
   @doc ~S"""
@@ -189,6 +224,27 @@ defmodule Rewrite.Project do
     Enum.reduce(sources, project, fn source, project -> update(project, source) end)
   end
 
+  @doc """
+  Updates the `Source` with the given `path` and function in the `Project`.
+
+  Returns an `:ok` tuple with the updated `%Project{}` when the path is present
+  in the `%Project{}`, otherwise :error.
+  """
+  @spec update(t(), Path.t(), function()) :: {:ok, t()} | :error
+  def update(%Project{} = project, path, fun) when is_function(fun, 1) do
+    with {:ok, source} <- source(project, path) do
+      case fun.(source) do
+        %Source{} = source ->
+          {:ok, Project.update(project, source)}
+
+        got ->
+          raise ProjectError, """
+          Expected Source.t from anonymous function given to Project.update/3, got: #{inspect(got)}\
+          """
+      end
+    end
+  end
+
   defp update?(%Project{sources: sources}, %Source{id: id} = source) do
     case Map.fetch(sources, id) do
       {:ok, legacy} -> legacy != source
@@ -271,17 +327,21 @@ defmodule Rewrite.Project do
           conflicts(sources, exclude, seen, conflicts)
 
         :error ->
-          case Map.fetch(seen, path) do
-            {:ok, item} ->
-              seen = Map.delete(seen, path)
-              conflicts = Map.put(conflicts, path, [source, item])
-              conflicts(sources, exclude, seen, conflicts)
-
-            :error ->
-              seen = Map.put(seen, path, source)
-              conflicts(sources, exclude, seen, conflicts)
-          end
+          conflicts_error(source, sources, exclude, seen, conflicts, path)
       end
+    end
+  end
+
+  defp conflicts_error(source, sources, exclude, seen, conflicts, path) do
+    case Map.fetch(seen, path) do
+      {:ok, item} ->
+        seen = Map.delete(seen, path)
+        conflicts = Map.put(conflicts, path, [source, item])
+        conflicts(sources, exclude, seen, conflicts)
+
+      :error ->
+        seen = Map.put(seen, path, source)
+        conflicts(sources, exclude, seen, conflicts)
     end
   end
 
@@ -361,12 +421,12 @@ defmodule Rewrite.Project do
 
   This function calls `Rewrite.Source.save/1` on all sources in the `project`.
 
-  The optional second argument accepts a list of paths for files to be excluded.
+  TODO: docs for opts
   """
   @spec save_all(t(), keyword()) ::
           {:ok, t()}
-          | {:error, [{:conflict | :changed, Path.t()}]}
-          | {:error, [{File.posix(), Paht.t()}], t()}
+          | {:error, :conflict}
+          | {:error, [{:changed | File.posix(), Path.t()}], t()}
   def save_all(%Project{} = project, opts \\ []) do
     exclude = Keyword.get(opts, :exclude, [])
     force = if Keyword.get(opts, :force, false), do: :force, else: nil
@@ -377,29 +437,29 @@ defmodule Rewrite.Project do
       else: {:error, conflicts: conflicts}
   end
 
-  defp save_all(%Project{sources: sources} = project, exclude, force) do
+  defp save_all(%Project{sources: sources} = project, exclude, force)
+       when force in [nil, :force] do
     {project, errors} =
       sources
       |> Map.values()
-      |> Enum.reduce({project, []}, fn
-        %Source{} = source, {project, errors} ->
-          if source.path in exclude do
-            {project, errors}
-          else
-            case Source.save(source, force) do
-              {:ok, source} -> {Project.update(project, source), errors}
-              {:error, :nofile} -> {project, errors}
-              {:error, reason} -> {project, [{reason, source.path} | errors]}
-            end
-          end
+      |> Enum.reduce({project, []}, fn source, acc ->
+        do_save_all(source, exclude, force, acc)
       end)
 
     if Enum.empty?(errors), do: {:ok, project}, else: {:error, errors, project}
   end
 
-  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
-
-  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
+  defp do_save_all(source, exclude, force, {project, errors}) do
+    if source.path in exclude do
+      {project, errors}
+    else
+      case Source.save(source, force) do
+        {:ok, source} -> {Project.update(project, source), errors}
+        {:error, :nofile} -> {project, errors}
+        {:error, reason} -> {project, [{reason, source.path} | errors]}
+      end
+    end
+  end
 
   defimpl Enumerable do
     def count(project) do
@@ -431,4 +491,15 @@ defmodule Rewrite.Project do
       Enumerable.List.reduce(sources, acc, fun)
     end
   end
+
+  defp expand(inputs) do
+    inputs
+    |> List.wrap()
+    |> Enum.map(&compile_globs!/1)
+    |> Enum.flat_map(&GlobEx.ls/1)
+  end
+
+  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
+
+  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 end

@@ -43,6 +43,31 @@ defmodule Rewrite.ProjectTest do
     end
   end
 
+  describe "read!/2" do
+    test "extends project" do
+      project = Project.new()
+
+      assert project = Project.read!(project, "test/fixtures/source/simple.ex")
+      assert Enum.count(project.sources) == 1
+    end
+
+    test "extends project with full path" do
+      project = Project.new()
+      path = Path.join(File.cwd!(), "test/fixtures/source/simple.ex")
+
+      assert project = Project.read!(project, path)
+      assert Enum.count(project.sources) == 1
+    end
+
+    test "does not read already read files" do
+      path = "test/fixtures/source/simple.ex"
+      project = Project.read!(path)
+
+      assert project = Project.read!(project, path)
+      assert Enum.count(project.sources) == 1
+    end
+  end
+
   describe "sources/2" do
     test "returns the source struct for a path" do
       path = "test/fixtures/source/simple.ex"

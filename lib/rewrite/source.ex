@@ -218,7 +218,7 @@ defmodule Rewrite.Source do
       {:error, :changed}
       iex> {:ok, _source} = Source.save(source, :force)
   """
-  @spec save(t(), force :: [nil | :force]) ::
+  @spec save(t(), force :: nil | :force) ::
           {:ok, t()} | {:error, :nofile | :changed | File.posix()}
   def save(source, force \\ nil)
 
@@ -325,7 +325,7 @@ defmodule Rewrite.Source do
       [{:code, :example, "a = 42"}]
   """
   @spec update(t(), by(), [code: String.t()] | [ast: Macro.t()] | [path: Path.t()]) :: t()
-  def update(%Source{} = source, by, [{key, value}])
+  def update(%Source{} = source, by \\ Rewrite, [{key, value}])
       when is_atom(by) and key in [:ast, :code, :path] do
     legacy = Map.fetch!(source, key)
 

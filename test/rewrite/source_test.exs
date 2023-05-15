@@ -22,6 +22,21 @@ defmodule Rewrite.SourceTest do
         from: :file
       })
     end
+
+    test "creates new source from full path" do
+      path = Path.join(File.cwd!(), "test/fixtures/source/simple.ex")
+      code = File.read!(path)
+
+      source = Source.read!(path)
+
+      assert_source(source, %{
+        path: path,
+        code: code,
+        modules: [MyApp.Simple],
+        owner: Rewrite,
+        from: :file
+      })
+    end
   end
 
   describe "from_string/2" do
