@@ -12,27 +12,62 @@ defmodule Rewrite.Project do
   @type id :: reference()
 
   @type t :: %Project{sources: %{id() => Source.t()}}
-
+  @type input :: Path.t() | wildcard() | GlobEx.t()
   @type wildcard :: IO.chardata()
+
+  @doc """
+  Creates an empty project.
+
+  ## Examples
+
+      iex> Project.new()
+      %Project{sources: %{}}
+  """
+  @spec new :: t()
+  def new, do: %Project{}
 
   @doc """
   Creates a `%Project{}` from the given `inputs`.
   """
-  @spec read!(input | [input]) :: t() when input: Path.t() | wildcard() | GlobEx.t()
+  @spec read!(input() | [input()]) :: t()
   def read!(inputs) do
-    inputs =
-      inputs
-      |> List.wrap()
-      |> Enum.map(&compile_globs!/1)
-      |> Enum.flat_map(&GlobEx.ls/1)
-
     sources =
-      Enum.reduce(inputs, %{}, fn path, sources ->
+      inputs
+      |> expand()
+      |> Enum.reduce(%{}, fn path, sources ->
         source = Source.read!(path)
         Map.put(sources, source.id, source)
       end)
 
     struct!(Project, sources: sources)
+  end
+
+  @doc """
+  Reads the given `input`/`inputs` and adds the source/sources to the `project`
+  when not already readed.
+  """
+  @spec read!(t(), input() | [input()]) :: t()
+  def read!(%Project{sources: sources} = project, inputs) do
+    read_files =
+      sources
+      |> Map.values()
+      |> Enum.reduce([], fn source, acc ->
+        if source.from == :file, do: [Source.path(source, 1) | acc], else: acc
+      end)
+
+    sources =
+      inputs
+      |> expand()
+      |> Enum.reduce(sources, fn path, sources ->
+        if path in read_files do
+          sources
+        else
+          source = Source.read!(path)
+          Map.put(sources, source.id, source)
+        end
+      end)
+
+    %{project | sources: sources}
   end
 
   @doc ~S"""
@@ -63,7 +98,7 @@ defmodule Rewrite.Project do
 
   It is possible that the project contains multiple sources with the same path.
   The function `conflicts/1` returns all conflicts in a project and the function
-  `save/2` returns an error tuple when trying to save a project with conflicts.
+  `save_all/2` returns an error tuple when trying to save a project with conflicts.
   It is up to the user of `rewrite` to handle conflicts.
 
   ## Examples
@@ -104,8 +139,10 @@ defmodule Rewrite.Project do
   @doc """
   Returns the `%Rewrite.Source{}` for the given `path`.
 
-  Returns an `:ok` tuple with the found source, if no or multiple sources are
+  Returns an `:ok` tuple with the found source, if not exactly one source is
   available an `:error` is returned.
+
+  See also `sources/2` to get a list of sources for a given `path`.
   """
   @spec source(t(), Path.t()) :: {:ok, Source.t()} | :error
   def source(%Project{} = project, path) do
@@ -187,6 +224,27 @@ defmodule Rewrite.Project do
     Enum.reduce(sources, project, fn source, project -> update(project, source) end)
   end
 
+  @doc """
+  Updates the `Source` with the given `path` and function in the `Project`.
+
+  Returns an `:ok` tuple with the updated `%Project{}` when the path is present
+  in the `%Project{}`, otherwise :error.
+  """
+  @spec update(t(), Path.t(), function()) :: {:ok, t()} | :error
+  def update(%Project{} = project, path, fun) when is_function(fun, 1) do
+    with {:ok, source} <- source(project, path) do
+      case fun.(source) do
+        %Source{} = source ->
+          {:ok, Project.update(project, source)}
+
+        got ->
+          raise ProjectError, """
+          Expected Source.t from anonymous function given to Project.update/3, got: #{inspect(got)}\
+          """
+      end
+    end
+  end
+
   defp update?(%Project{sources: sources}, %Source{id: id} = source) do
     case Map.fetch(sources, id) do
       {:ok, legacy} -> legacy != source
@@ -222,38 +280,68 @@ defmodule Rewrite.Project do
   end
 
   @doc """
+  Returns a list of paths for files that have changed since reading.
+
+  The optional second argument expects a list of paths to exclude. The list
+  defaults to `[]`.
+  """
+  @spec changes(t(), [Path.t()]) :: [Path.t()]
+  def changes(%Project{sources: sources}, exclude \\ []) do
+    Enum.reduce(sources, [], fn {_id, source}, acc ->
+      path = Source.path(source)
+
+      if path in exclude || !Source.file_changed?(source) do
+        acc
+      else
+        [path | acc]
+      end
+    end)
+  end
+
+  @doc """
   Returns conflicts between sources.
 
   Sources with the same path have a conflict.
+
+  The optional second argument expects a list of paths to exclude. The list
+  defaults to `[]`.
   """
-  @spec conflicts(t()) :: %{Path.t() => [Source.t()]}
-  def conflicts(%Project{sources: sources}) do
+  @spec conflicts(t(), [Path.t()]) :: %{Path.t() => [Source.t()]}
+  def conflicts(%Project{sources: sources}, exclude \\ []) do
     sources
     |> Map.values()
-    |> conflicts(%{}, %{})
+    |> conflicts(exclude, %{}, %{})
   end
 
-  defp conflicts([], _seen, conflicts), do: conflicts
+  defp conflicts([], _exclude, _seen, conflicts), do: conflicts
 
-  defp conflicts([source | sources], seen, conflicts) do
+  defp conflicts([source | sources], exclude, seen, conflicts) do
     path = Source.path(source)
 
-    case Map.fetch(conflicts, path) do
-      {:ok, list} ->
-        conflicts = Map.put(conflicts, path, [source | list])
-        conflicts(sources, seen, conflicts)
+    if path in exclude do
+      conflicts(sources, exclude, seen, conflicts)
+    else
+      case Map.fetch(conflicts, path) do
+        {:ok, list} ->
+          conflicts = Map.put(conflicts, path, [source | list])
+          conflicts(sources, exclude, seen, conflicts)
+
+        :error ->
+          conflicts_error(source, sources, exclude, seen, conflicts, path)
+      end
+    end
+  end
+
+  defp conflicts_error(source, sources, exclude, seen, conflicts, path) do
+    case Map.fetch(seen, path) do
+      {:ok, item} ->
+        seen = Map.delete(seen, path)
+        conflicts = Map.put(conflicts, path, [source, item])
+        conflicts(sources, exclude, seen, conflicts)
 
       :error ->
-        case Map.fetch(seen, path) do
-          {:ok, item} ->
-            seen = Map.delete(seen, path)
-            conflicts = Map.put(conflicts, path, [source, item])
-            conflicts(sources, seen, conflicts)
-
-          :error ->
-            seen = Map.put(seen, path, source)
-            conflicts(sources, seen, conflicts)
-        end
+        seen = Map.put(seen, path, source)
+        conflicts(sources, exclude, seen, conflicts)
     end
   end
 
@@ -301,62 +389,77 @@ defmodule Rewrite.Project do
   end
 
   @doc """
+  Saves a source to disk.
+
+  The function expects a path or a `%Source{}` as first argument.
+
+  Returns `{:ok, project}` if the file was written successfully. See also
+  `Source.save/2`.
+
+  If the given `source` not part of the `project` then it is added.
+  """
+  @spec save(t(), Path.t() | Source.t(), nil | :force) ::
+          {:ok, t()} | {:error, :nosource | :conflict | :nofile | :changed | File.posix()}
+  def save(project, path, force \\ nil)
+
+  def save(%Project{} = project, path, force) when is_binary(path) and force in [nil, :force] do
+    case sources(project, path) do
+      [] -> {:error, :nosource}
+      [source] -> save(project, source, force)
+      _sources -> {:error, :conflict}
+    end
+  end
+
+  def save(%Project{} = project, %Source{} = source, force) when force in [nil, :force] do
+    with {:ok, source} <- Source.save(source) do
+      {:ok, Project.update(project, source)}
+    end
+  end
+
+  @doc """
   Saves all sources in the `project` to disk.
 
-  This function call `Rewrite.Source.save/1` on all sources in the `project`.
+  This function calls `Rewrite.Source.save/1` on all sources in the `project`.
 
-  The optional second argument accepts a list of paths for files to be excluded.
+  TODO: docs for opts
   """
-  @spec save(t(), [Path.t()]) ::
-          :ok | {:error, :conflicts | {Path.t(), File.posix()}}
-  def save(%Project{sources: sources} = project, exclude \\ []) do
-    with :ok <- conflict_free(project, exclude) do
-      result =
-        sources
-        |> Map.values()
-        |> Enum.reduce([], fn source, errors ->
-          save(source, exclude, errors)
-        end)
+  @spec save_all(t(), keyword()) ::
+          {:ok, t()}
+          | {:error, :conflict}
+          | {:error, [{:changed | File.posix(), Path.t()}], t()}
+  def save_all(%Project{} = project, opts \\ []) do
+    exclude = Keyword.get(opts, :exclude, [])
+    force = if Keyword.get(opts, :force, false), do: :force, else: nil
+    conflicts = conflicts(project, exclude)
 
-      case result do
-        [] -> :ok
-        errors -> {:error, errors}
+    if Enum.empty?(conflicts),
+      do: save_all(project, exclude, force),
+      else: {:error, conflicts: conflicts}
+  end
+
+  defp save_all(%Project{sources: sources} = project, exclude, force)
+       when force in [nil, :force] do
+    {project, errors} =
+      sources
+      |> Map.values()
+      |> Enum.reduce({project, []}, fn source, acc ->
+        do_save_all(source, exclude, force, acc)
+      end)
+
+    if Enum.empty?(errors), do: {:ok, project}, else: {:error, errors, project}
+  end
+
+  defp do_save_all(source, exclude, force, {project, errors}) do
+    if source.path in exclude do
+      {project, errors}
+    else
+      case Source.save(source, force) do
+        {:ok, source} -> {Project.update(project, source), errors}
+        {:error, :nofile} -> {project, errors}
+        {:error, reason} -> {project, [{reason, source.path} | errors]}
       end
     end
   end
-
-  defp save(source, exclude, errors) do
-    case write?(source, exclude) do
-      false ->
-        errors
-
-      true ->
-        case Source.save(source) do
-          :ok -> errors
-          {:error, :nofile} -> errors
-          {:error, reason} -> [{source.path, reason} | errors]
-        end
-    end
-  end
-
-  defp conflict_free(project, exclude) do
-    conflicts =
-      project
-      |> conflicts()
-      |> Map.keys()
-      |> Enum.reject(fn conflict -> conflict in exclude end)
-
-    case conflicts do
-      [] -> :ok
-      _list -> {:error, :conflicts}
-    end
-  end
-
-  defp write?(%Source{path: path}, exclude), do: path not in exclude
-
-  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
-
-  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 
   defimpl Enumerable do
     def count(project) do
@@ -388,4 +491,15 @@ defmodule Rewrite.Project do
       Enumerable.List.reduce(sources, acc, fun)
     end
   end
+
+  defp expand(inputs) do
+    inputs
+    |> List.wrap()
+    |> Enum.map(&compile_globs!/1)
+    |> Enum.flat_map(&GlobEx.ls/1)
+  end
+
+  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
+
+  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 end

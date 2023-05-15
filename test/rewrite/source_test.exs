@@ -22,6 +22,21 @@ defmodule Rewrite.SourceTest do
         from: :file
       })
     end
+
+    test "creates new source from full path" do
+      path = Path.join(File.cwd!(), "test/fixtures/source/simple.ex")
+      code = File.read!(path)
+
+      source = Source.read!(path)
+
+      assert_source(source, %{
+        path: path,
+        code: code,
+        modules: [MyApp.Simple],
+        owner: Rewrite,
+        from: :file
+      })
+    end
   end
 
   describe "from_string/2" do
@@ -347,13 +362,10 @@ defmodule Rewrite.SourceTest do
     end
   end
 
-  defp hash(path, code), do: :crypto.hash(:md5, path <> code)
-
   defp assert_source(%Source{} = source, expected) do
     assert is_reference(source.id)
     assert source.path == expected.path
     assert source.code == expected.code
-    assert source.hash == hash(expected.path, expected.code)
     assert source.modules == expected.modules
     assert source.updates == Map.get(expected, :updates, [])
     assert source.issues == Map.get(expected, :issues, [])
