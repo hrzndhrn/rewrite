@@ -11,11 +11,11 @@ defmodule Rewrite.Source do
 
   alias Mix.Tasks.Format
   alias Rewrite.Source
+  alias Rewrite.SourceError
   alias Rewrite.TextDiff
   alias Sourceror.Zipper
 
   defstruct [
-    :id,
     :from,
     :path,
     :code,
@@ -28,6 +28,8 @@ defmodule Rewrite.Source do
     private: %{}
   ]
 
+  @type opts :: keyword()
+
   @typedoc """
   The `version` of a `%Source{}`. The version `1` indicates that the source has
   no changes.
@@ -38,14 +40,11 @@ defmodule Rewrite.Source do
 
   @type by :: module()
 
-  @type id :: String.t()
-
   @type from :: :file | :ast | :string
 
   @type issue :: term()
 
   @type t :: %Source{
-          id: id(),
           path: Path.t() | nil,
           code: String.t(),
           ast: Macro.t(),
@@ -96,7 +95,6 @@ defmodule Rewrite.Source do
 
     struct!(
       Source,
-      id: make_ref(),
       from: Keyword.fetch!(fields, :from),
       path: Keyword.get(fields, :path, nil),
       code: code,
@@ -140,63 +138,50 @@ defmodule Rewrite.Source do
     new(ast: ast, path: path, owner: owner, from: :ast)
   end
 
-  @doc """
-  Marks the given `source` as deleted.
-
-  This function set the `path` of the `given` source to `nil`.
-  """
-  @spec del(t(), nil | module()) :: t()
-  def del(source, by \\ nil)
-
-  def del(%Source{path: nil} = source, _by), do: source
-
-  def del(%Source{path: legacy} = source, by) do
-    source
-    |> Map.put(:path, nil)
-    |> update_updates({:path, by, legacy})
-  end
-
   @doc ~S"""
-  Saves the source to disk.
+  Writes the source to disk.
 
   Returns `{:ok, source}` when the file was written successfully. The returned
   `source` does not include any previous changes or issues.
 
-  Returns `{:error, :nofile}` if the current `path` is nil.
+  If there's an error, this function returns `{:error, error}` where `error`
+  is a `Rewrite.SourceError`. You can raise it manually with `raise/1`.
 
-  Returns `{:error, :changed}` if the file was changed since reading. See also
-  `file_updated?/1`. The function accepts `:force` as a second argument to force
+  Returns `{:error, error}` with `reason: :nopath` if the current `path` is nil.
+
+  Returns `{:error, error}` with `reason: :changed` if the file was changed
+  since reading. See also `file_changed?/1`. The option `force: true` forces
   overwriting a changed file.
 
-  If the source `:path` was updated then the old file will be deleted. The
-  original file will also deleted when the `source` was marked as deleted with
-  `del/1`.
+  If the source `:path` was updated then the old file will be deleted.
 
   Missing directories are created.
 
+  ## Options
+
+  + `:force`, default: `false` - forces the saving to overwrite changed files.
+  + `:rm`, default: `true` - prevents file deletion when set to `false`.
+
   ## Examples
 
-      iex> ":test" |> Source.from_string() |> Source.save()
-      {:error, :nofile}
+      iex> ":test" |> Source.from_string() |> Source.write()
+      {:error, %SourceError{reason: :nopath, path: nil, action: :write}}
 
       iex> path = "tmp/foo.ex"
       iex> File.write(path, ":foo")
       iex> source = path |> Source.read!() |> Source.update(:test, code: ":bar")
       iex> Source.updated?(source)
       true
-      iex> {:ok, source} = Source.save(source)
+      iex> {:ok, source} = Source.write(source)
       iex> File.read(path)
       {:ok, ":bar\n"}
       iex> Source.updated?(source)
       false
-      iex> source |> Source.del() |> Source.save()
-      iex> File.exists?(path)
-      false
 
       iex> source = Source.from_string(":bar")
-      iex> Source.save(source)
-      {:error, :nofile}
-      iex> source |> Source.update(:test, path: "tmp/bar.ex") |> Source.save()
+      iex> Source.write(source)
+      {:error, %SourceError{reason: :nopath, path: nil, action: :write}}
+      iex> source |> Source.update(:test, path: "tmp/bar.ex") |> Source.write()
       iex> File.read("tmp/bar.ex")
       {:ok, ":bar\n"}
 
@@ -204,7 +189,8 @@ defmodule Rewrite.Source do
       iex> File.write(path, ":ping")
       iex> source = Source.read!(path)
       iex> new_path = "tmp/pong.ex"
-      iex> source |> Source.update(:test, path: new_path) |> Source.save()
+      iex> source = Source.update(source, :test, path: new_path)
+      iex> Source.write(source)
       iex> File.exists?(path)
       false
       iex> File.read(new_path)
@@ -212,33 +198,52 @@ defmodule Rewrite.Source do
 
       iex> path = "tmp/ping.ex"
       iex> File.write(path, ":ping")
+      iex> source = Source.read!(path)
+      iex> new_path = "tmp/pong.ex"
+      iex> source = Source.update(source, :test, path: new_path)
+      iex> Source.write(source, rm: false)
+      iex> File.exists?(path)
+      true
+      iex> File.read(new_path)
+      {:ok, ":ping\n"}
+
+      iex> path = "tmp/ping.ex"
+      iex> File.write(path, ":ping")
       iex> source = path |> Source.read!() |> Source.update(:test, code: "peng")
       iex> File.write(path, ":pong")
-      iex> Source.save(source)
-      {:error, :changed}
-      iex> {:ok, _source} = Source.save(source, :force)
+      iex> Source.write(source)
+      {:error, %SourceError{reason: :changed, path: "tmp/ping.ex", action: :write}}
+      iex> {:ok, _source} = Source.write(source, force: true)
   """
-  @spec save(t(), force :: nil | :force) ::
-          {:ok, t()} | {:error, :nofile | :changed | File.posix()}
-  def save(source, force \\ nil)
-
-  def save(%Source{path: nil, updates: []}, _force), do: {:error, :nofile}
-
-  def save(%Source{updates: []} = source, _force), do: {:ok, source}
-
-  def save(%Source{path: nil} = source, _force) do
-    with :ok <- maybe_rm(source), do: {:ok, source}
+  @spec write(t(), opts()) ::
+          {:ok, t()} | {:error, SourceError.t()}
+  def write(%Source{} = source, opts \\ []) do
+    force = Keyword.get(opts, :force, false)
+    rm = Keyword.get(opts, :rm, true)
+    write(source, force, rm)
   end
 
-  def save(%Source{path: path, code: code} = source, force) when force in [nil, :force] do
-    if file_changed?(source) && is_nil(force) do
-      {:error, :changed}
+  defp write(%Source{path: nil}, _force, _rm) do
+    {:error, SourceError.exception(reason: :nopath, action: :write)}
+  end
+
+  defp write(%Source{updates: []} = source, _force, _rm), do: {:ok, source}
+
+  defp write(%Source{path: path, code: code} = source, force, rm) do
+    if file_changed?(source) && !force do
+      {:error, SourceError.exception(reason: :changed, path: source.path, action: :write)}
     else
-      with :ok <- mkdir_p(path),
-           :ok <- File.write(path, eof_newline(code)),
-           :ok <- maybe_rm(source) do
+      with :ok <- maybe_rm(source, rm),
+           :ok <- mkdir_p(path),
+           :ok <- file_write(path, eof_newline(code)) do
         {:ok, %{source | hash: hash(path, code), updates: [], issues: []}}
       end
+    end
+  end
+
+  defp file_write(path, content) do
+    with {:error, reason} <- File.write(path, content) do
+      {:error, SourceError.exception(reason: reason, path: path, action: :write)}
     end
   end
 
@@ -246,12 +251,58 @@ defmodule Rewrite.Source do
     path |> Path.dirname() |> File.mkdir_p()
   end
 
-  defp maybe_rm(source) do
+  defp maybe_rm(_source, false), do: :ok
+
+  defp maybe_rm(source, true) do
     case {Source.updated?(source, :path), Source.path(source, 1)} do
-      {false, _path} -> :ok
-      {true, nil} -> :ok
-      {true, path} -> File.rm(path)
+      {false, _path} ->
+        :ok
+
+      {true, nil} ->
+        :ok
+
+      {true, path} ->
+        with {:error, reason} <- File.rm(path) do
+          {:error, SourceError.exception(reason: reason, path: path, action: :write)}
+        end
     end
+  end
+
+  @doc """
+  Same as `write/1`, but raises a `Rewrite.SourceError` exception in case of
+  failure.
+  """
+  @spec write!(t()) :: t()
+  def write!(%Source{} = source) do
+    case write(source) do
+      {:ok, source} -> source
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Tries to delete the file `source`.
+
+  Returns `:ok` if successful, or `{:error, reason}` if an error occurs.
+
+  Note the file is deleted even if in read-only mode.
+  """
+  @spec rm(t()) :: :ok | {:error, SourceError.t()}
+  def rm(%Source{path: nil}), do: {:error, %SourceError{reason: :nopath, action: :rm}}
+
+  def rm(%Source{path: path}) do
+    with {:error, reason} <- File.rm(path) do
+      {:error, %SourceError{reason: reason, action: :rm, path: path}}
+    end
+  end
+
+  @doc """
+  Same as `rm/1`, but raises a `Rewrite.SourceError` exception in case of
+  failure. Otherwise `:ok`.
+  """
+  @spec rm!(t()) :: :ok
+  def rm!(%Source{} = source) do
+    with {:error, reason} <- rm(source), do: raise(reason)
   end
 
   @doc """
@@ -420,6 +471,9 @@ defmodule Rewrite.Source do
       iex> File.write("tmp/code.ex", "a = 24")
       iex> Source.file_changed?(source)
       false
+      iex> File.rm!("tmp/code.ex")
+      iex> Source.file_changed?(source)
+      true
 
       iex> source = Source.from_string("a = 77")
       iex> Source.file_changed?(source)
@@ -637,7 +691,7 @@ defmodule Rewrite.Source do
         ]
       }
   """
-  @spec ast(t()) :: {:ok, Macro.t()} | {:error, term()}
+  @spec ast(t()) :: Macro.t()
   def ast(%Source{ast: ast}), do: ast
 
   @doc """
@@ -700,7 +754,7 @@ defmodule Rewrite.Source do
       5 4   |
       """
   '''
-  @spec diff(t(), keyword()) :: iodata()
+  @spec diff(t(), opts()) :: iodata()
   def diff(%Source{} = source, opts \\ []) do
     TextDiff.format(
       source |> code(1) |> eof_newline(),

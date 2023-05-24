@@ -5,15 +5,16 @@ defmodule Rewrite.Project do
 
   alias Rewrite.Project
   alias Rewrite.ProjectError
+  alias Rewrite.ProjectUpdateError
   alias Rewrite.Source
+  alias Rewrite.SourceError
 
   defstruct sources: %{}
 
-  @type id :: reference()
-
-  @type t :: %Project{sources: %{id() => Source.t()}}
+  @type t :: %Project{sources: %{Path.t() => Source.t()}}
   @type input :: Path.t() | wildcard() | GlobEx.t()
   @type wildcard :: IO.chardata()
+  @type opts :: keyword()
 
   @doc """
   Creates an empty project.
@@ -36,7 +37,7 @@ defmodule Rewrite.Project do
       |> expand()
       |> Enum.reduce(%{}, fn path, sources ->
         source = Source.read!(path)
-        Map.put(sources, source.id, source)
+        Map.put(sources, source.path, source)
       end)
 
     struct!(Project, sources: sources)
@@ -45,42 +46,217 @@ defmodule Rewrite.Project do
   @doc """
   Reads the given `input`/`inputs` and adds the source/sources to the `project`
   when not already readed.
+
+  ## Options
+
+  + `:force`, default: `false` - forces the reading of sources. With
+    `force: true` updates and issues for an already existing source are deleted.
   """
-  @spec read!(t(), input() | [input()]) :: t()
-  def read!(%Project{sources: sources} = project, inputs) do
-    read_files =
-      sources
-      |> Map.values()
-      |> Enum.reduce([], fn source, acc ->
-        if source.from == :file, do: [Source.path(source, 1) | acc], else: acc
-      end)
+  @spec read!(t(), input() | [input()], opts()) :: t()
+  def read!(%Project{sources: sources} = project, inputs, opts \\ []) do
+    force = Keyword.get(opts, :force, false)
 
     sources =
       inputs
       |> expand()
       |> Enum.reduce(sources, fn path, sources ->
-        if path in read_files do
+        if !force && Map.has_key?(sources, path) do
           sources
         else
           source = Source.read!(path)
-          Map.put(sources, source.id, source)
+          Map.put(sources, source.path, source)
         end
       end)
 
     %{project | sources: sources}
   end
 
+  @doc """
+  Puts the given `source` to the `project`.
+
+  Returns `{:ok, project}` if successful, `{:error, reason}` otherwise.
+
+  ## Examples
+
+      iex> project = Project.new()
+      iex> {:ok, project} = Project.put(project, Source.from_string(":a", "a.exs"))
+      iex> map_size(project.sources)
+      1
+      iex> Project.put(project, Source.from_string(":b"))
+      {:error, %ProjectError{reason: :nopath}}
+      iex> Project.put(project, Source.from_string(":a", "a.exs"))
+      {:error, %ProjectError{reason: :overwrites, path: "a.exs"}}
+  """
+  @spec put(t(), Source.t()) :: {:ok, t()} | {:error, ProjectError.t()}
+  def put(%Project{}, %Source{path: nil}), do: {:error, ProjectError.exception(reason: :nopath)}
+
+  def put(%Project{sources: sources} = project, %Source{path: path} = source) do
+    case Map.has_key?(sources, path) do
+      true -> {:error, ProjectError.exception(reason: :overwrites, path: path)}
+      false -> {:ok, %{project | sources: Map.put(sources, path, source)}}
+    end
+  end
+
+  @doc """
+  Same as `put/2`, but raises a `Rewrite.ProjectError` exception in case of
+  failure.
+  """
+  @spec put!(t(), Source.t()) :: t()
+  def put!(%Project{} = project, %Source{} = source) do
+    case put(project, source) do
+      {:ok, project} -> project
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Deletes the source for the given `path` from the `project`. The file on disk
+  is not removed.
+
+  If the source is not part of the `project` the unchanged `project` is
+  returned.
+
+  ## Examples
+
+      iex> {:ok, project} = Project.from_sources([
+      ...>   Source.from_string(":a", "a.exs"),
+      ...>   Source.from_string(":b", "b.exs"),
+      ...>   Source.from_string(":a", "c.exs")
+      ...> ])
+      iex> Project.paths(project)
+      ["a.exs", "b.exs", "c.exs"]
+      iex> project = Project.delete(project, "a.exs")
+      iex> Project.paths(project)
+      ["b.exs", "c.exs"]
+      iex> project = Project.delete(project, "b.exs")
+      iex> Project.paths(project)
+      ["c.exs"]
+      iex> project = Project.delete(project, "b.exs")
+      iex> Project.paths(project)
+      ["c.exs"]
+  """
+  @spec delete(t(), Path.t()) :: t()
+  def delete(%Project{sources: sources} = project, path) when is_binary(path) do
+    %{project | sources: Map.delete(sources, path)}
+  end
+
+  @doc """
+  Drops the sources with the given `paths` from the `project`.
+
+  The files for the dropped sources are not removed from disk.
+
+  If `paths` contains paths that are not in `project`, they're simply ignored.
+
+  ## Examples
+
+      iex> {:ok, project} = Project.from_sources([
+      ...>   Source.from_string(":a", "a.exs"),
+      ...>   Source.from_string(":b", "b.exs"),
+      ...>   Source.from_string(":a", "c.exs")
+      ...> ])
+      iex> project = Project.drop(project, ["a.exs", "b.exs", "z.exs"])
+      iex> Project.paths(project)
+      ["c.exs"]
+  """
+  @spec drop(t(), [Path.t()]) :: t()
+  def drop(%Project{} = project, paths) when is_list(paths) do
+    Enum.reduce(paths, project, fn source, project -> delete(project, source) end)
+  end
+
+  @doc """
+  Tries to delete the `source` file and removes the `source` from the `project`.
+
+  Returns `{:ok, project}` if successful, or `{:error, error}` if an error
+  occurs.
+
+  Note the file is deleted even if in read-only mode.
+  """
+  @spec rm(t(), Path.t()) ::
+          {:ok, t()} | {:error, ProjectError.t() | SourceError.t()}
+  def rm(%Project{} = project, path) when is_binary(path) do
+    with {:ok, source} <- source(project, path),
+         :ok <- Source.rm(source) do
+      {:ok, delete(project, source.path)}
+    end
+  end
+
+  @doc """
+  Same as `source/2`, but raises a `Rewrite.ProjectError` exception in case of
+  failure.
+  """
+  @spec rm!(t(), Source.t() | Path.t()) :: t()
+  def rm!(%Project{} = project, source) when is_binary(source) or is_struct(source, Source) do
+    case rm(project, source) do
+      {:ok, project} -> project
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Returns a sorted list of all paths in the `project`.
+  """
+  @spec paths(t()) :: [Path.t()]
+  def paths(%Project{sources: sources}) do
+    sources |> Map.keys() |> Enum.sort()
+  end
+
+  @doc """
+  Returns `true` if any source in the `project` returns `true` for
+  `Source.updated?/1`.
+
+  ## Examples
+
+      iex> {:ok, project} = Project.from_sources([
+      ...>   Source.from_string(":a", "a.exs"),
+      ...>   Source.from_string(":b", "b.exs")
+      ...> ])
+      iex> Project.updated?(project)
+      false
+      iex> project = Project.update!(project, "a.exs", fn source ->
+      ...>   Source.update(source, code: ":z")
+      ...> end)
+      iex> Project.updated?(project)
+      true
+  """
+  @spec updated?(t()) :: boolean()
+  def updated?(%Project{} = project) do
+    project.sources |> Map.values() |> Enum.any?(fn source -> Source.updated?(source) end)
+  end
+
   @doc ~S"""
   Creates a `%Project{}` from the given sources.
+
+  Returns `{:ok, project}` for a list of regular sources.
+
+  Returns `{:error, error}` for sources with a missing path and/or duplicated
+  paths.
   """
-  @spec from_sources([Source.t()]) :: Project.t()
-  def from_sources(sources) do
-    sources =
-      Enum.reduce(sources, %{}, fn source, sources ->
-        Map.put(sources, source.id, source)
+  @spec from_sources([Source.t()]) :: {:ok, Project.t()} | {:error, ProjectError.t()}
+  def from_sources(sources) when is_list(sources) do
+    {sources, missing, duplicated} =
+      Enum.reduce(sources, {%{}, [], []}, fn %Source{} = source, {sources, missing, duplicated} ->
+        cond do
+          is_nil(source.path) ->
+            {sources, [source | missing], duplicated}
+
+          Map.has_key?(sources, source.path) ->
+            {sources, missing, [source | duplicated]}
+
+          true ->
+            {Map.put(sources, source.path, source), missing, duplicated}
+        end
       end)
 
-    struct!(Project, sources: sources)
+    if Enum.empty?(missing) && Enum.empty?(duplicated) do
+      {:ok, struct!(Project, sources: sources)}
+    else
+      {:error,
+       ProjectError.exception(
+         reason: :invalid_sources,
+         missing_paths: missing,
+         duplicated_paths: duplicated
+       )}
+    end
   end
 
   @doc """
@@ -93,49 +269,6 @@ defmodule Rewrite.Project do
     |> Enum.sort_by(fn source -> source.path end)
   end
 
-  @doc ~S'''
-  Returns a list of `%Source{}` for the given `path`.
-
-  It is possible that the project contains multiple sources with the same path.
-  The function `conflicts/1` returns all conflicts in a project and the function
-  `save_all/2` returns an error tuple when trying to save a project with conflicts.
-  It is up to the user of `rewrite` to handle conflicts.
-
-  ## Examples
-
-      iex> source = Source.from_string(
-      ...>    """
-      ...>    defmodule MyApp.Mode do
-      ...>    end
-      ...>    """,
-      ...>    "my_app/mode.ex"
-      ...> )
-      iex> project = Project.from_sources([source])
-      iex> Project.sources(project, "my_app/mode.ex")
-      [source]
-      iex> Project.sources(project, "foo")
-      []
-
-      iex> a = Source.from_string(":a", "a.ex")
-      iex> b = Source.from_string(":b", "b.ex")
-      iex> project = Project.from_sources([a, b])
-      iex> update = Source.update(a, :test, path: "b.ex")
-      iex> project = Project.update(project, update)
-      iex> Project.sources(project, "a.ex")
-      []
-      iex> Project.sources(project, "b.ex")
-      [b, update]
-  '''
-  @spec sources(t(), Path.t()) :: [Source.t()]
-  def sources(%Project{sources: sources}, path) do
-    Enum.reduce(sources, [], fn {_id, source}, acc ->
-      case source.path == path do
-        true -> [source | acc]
-        false -> acc
-      end
-    end)
-  end
-
   @doc """
   Returns the `%Rewrite.Source{}` for the given `path`.
 
@@ -144,205 +277,169 @@ defmodule Rewrite.Project do
 
   See also `sources/2` to get a list of sources for a given `path`.
   """
-  @spec source(t(), Path.t()) :: {:ok, Source.t()} | :error
-  def source(%Project{} = project, path) do
-    case sources(project, path) do
-      [source] -> {:ok, source}
-      _else -> :error
+  @spec source(t(), Path.t()) :: {:ok, Source.t()} | {:error, ProjectError.t()}
+  def source(%Project{sources: sources}, path) when is_binary(path) do
+    with :error <- Map.fetch(sources, path) do
+      {:error, ProjectError.exception(reason: :nosource, path: path)}
     end
   end
 
   @doc """
-  Same as `source/2` but raises a `ProjectError`.
+  Same as `source/2`, but raises a `Rewrite.ProjectError` exception in case of
+  failure.
   """
   @spec source!(t(), Path.t()) :: Source.t()
   def source!(%Project{} = project, path) do
     case source(project, path) do
       {:ok, source} -> source
-      :error -> raise ProjectError, "No source for #{inspect(path)} found."
+      {:error, error} -> raise error
     end
   end
 
   @doc """
-  Returns a list of `%Rewrite.Source{}` with an implementation for the given
-  `module`.
+  Updates the given `source` in the `project`.
+
+  This function will be usually used if the `path` for the `source` has not
+  changed.
+
+  Returns `{:ok, project}` if successful, `{:error, error}` otherwise.
   """
-  @spec sources_by_module(t(), module()) :: [Source.t()]
-  def sources_by_module(%Project{sources: sources}, module) do
-    Enum.reduce(sources, [], fn {_id, source}, acc ->
-      case module in source.modules do
-        true -> [source | acc]
-        false -> acc
-      end
-    end)
+  @spec update(t(), Source.t()) ::
+          {:ok, t()} | {:error, ProjectError.t()}
+  def update(%Project{}, %Source{path: nil}),
+    do: {:error, ProjectError.exception(reason: :nopath)}
+
+  def update(%Project{} = project, %Source{} = source) do
+    update(project, source.path, source)
   end
 
   @doc """
-  Returns the `%Rewrite.source{}` for the given `module`.
-
-  Returns an `:ok` tuple with the found source, if no or multiple sources are
-  available an `:error` is returned.
+  The same as `update/2` but raises a `Rewrite.ProjectError` exception in case
+  of an error.
   """
-  @spec source_by_module(t(), module()) :: {:ok, Source.t()} | :error
-  def source_by_module(%Project{} = project, module) do
-    case sources_by_module(project, module) do
-      [source] -> {:ok, source}
-      _else -> :error
+  @spec update!(t(), Source.t()) :: t()
+  def update!(%Project{} = project, %Source{} = source) do
+    case update(project, source) do
+      {:ok, project} -> project
+      {:error, error} -> raise error
     end
   end
 
   @doc """
-  Same as `source_by_module/2` but raises a `ProjectError`.
+  Updates a source for the given `path` in the `project`.
+
+  If `source` a `Rewrite.Source` struct the struct is used to update the
+  `project`.
+
+  If `source` a function the source for the given `path` is passed to the
+  function and the result is used to update the `project`.
+
+  Returns `{:ok, project}` if the update was successful, `{:error, error}`
+  otherwise.
+
+  ## Examples
+
+      iex> a = Source.from_string(":a", "a.exs")
+      iex> b = Source.from_string(":b", "b.exs")
+      iex> {:ok, project} = Project.from_sources([a, b])
+      iex> {:ok, project} = Project.update(project, "a.exs", Source.from_string(":foo", "a.exs"))
+      iex> project |> Project.source!("a.exs") |> Source.code()
+      ":foo"
+      iex> {:ok, project} = Project.update(project, "a.exs", fn s -> Source.update(s, code: ":baz") end)
+      iex> project |> Project.source!("a.exs") |> Source.code()
+      ":baz"
+      iex> {:ok, project} = Project.update(project, "a.exs", fn s -> Source.update(s, path: "c.exs") end)
+      iex> Project.paths(project)
+      ["b.exs", "c.exs"]
+      iex> Project.update(project, "no.exs", Source.from_string(":foo", "x.exs"))
+      {:error, %ProjectError{reason: :nosource, path: "no.exs"}}
+      iex> Project.update(project, "c.exs", Source.from_string(":foo"))
+      {:error, %ProjectUpdateError{reason: :nopath, source: "c.exs"}}
+      iex> Project.update(project, "c.exs", fn _ -> b end)
+      {:error, %ProjectUpdateError{reason: :overwrites, path: "b.exs", source: "c.exs"}}
   """
-  @spec source_by_module!(t(), module()) :: Source.t()
-  def source_by_module!(%Project{} = project, module) do
-    case source_by_module(project, module) do
-      {:ok, source} -> source
-      :error -> raise ProjectError, "No source for #{inspect(module)} found."
+  @spec update(t(), Path.t(), Source.t() | function()) ::
+          {:ok, t()} | {:error, ProjectError.t() | ProjectUpdateError.t()}
+  def update(%Project{}, path, %Source{path: nil}) when is_binary(path) do
+    {:error, ProjectUpdateError.exception(reason: :nopath, source: path)}
+  end
+
+  def update(%Project{} = project, path, %Source{} = source)
+      when is_binary(path) do
+    with {:ok, _stored} <- source(project, path) do
+      do_update(project, path, source)
     end
   end
 
-  @doc """
-  Updates the `project` with the given `source`.
+  def update(%Project{} = project, path, fun) when is_binary(path) and is_function(fun, 1) do
+    with {:ok, stored} <- source(project, path),
+         {:ok, source} <- apply_update!(stored, fun) do
+      do_update(project, path, source)
+    end
+  end
 
-  If the `source` is part of the project the `source` will be replaced,
-  otherwise the `source` will be added.
-  """
-  @spec update(t(), Source.t() | [Source.t()]) :: t()
-  def update(%Project{sources: sources} = project, %Source{} = source) do
-    case update?(project, source) do
-      false ->
-        project
-
+  defp do_update(project, path, source) do
+    case path == source.path do
       true ->
-        sources = Map.put(sources, source.id, source)
-        %Project{project | sources: sources}
-    end
-  end
+        {:ok, %{project | sources: Map.put(project.sources, path, source)}}
 
-  def update(%Project{} = project, sources) when is_list(sources) do
-    Enum.reduce(sources, project, fn source, project -> update(project, source) end)
-  end
+      false ->
+        case Map.has_key?(project.sources, source.path) do
+          true ->
+            {:error,
+             ProjectUpdateError.exception(reason: :overwrites, path: source.path, source: path)}
 
-  @doc """
-  Updates the `Source` with the given `path` and function in the `Project`.
-
-  Returns an `:ok` tuple with the updated `%Project{}` when the path is present
-  in the `%Project{}`, otherwise :error.
-  """
-  @spec update(t(), Path.t(), function()) :: {:ok, t()} | :error
-  def update(%Project{} = project, path, fun) when is_function(fun, 1) do
-    with {:ok, source} <- source(project, path) do
-      case fun.(source) do
-        %Source{} = source ->
-          {:ok, Project.update(project, source)}
-
-        got ->
-          raise ProjectError, """
-          Expected Source.t from anonymous function given to Project.update/3, got: #{inspect(got)}\
-          """
-      end
-    end
-  end
-
-  defp update?(%Project{sources: sources}, %Source{id: id} = source) do
-    case Map.fetch(sources, id) do
-      {:ok, legacy} -> legacy != source
-      :error -> true
-    end
-  end
-
-  @doc """
-  Returns the unreferenced sources.
-
-  Unreferenced source are sources whose original path is no longer part of the
-  project.
-  """
-  @spec unreferenced(t()) :: [Source.t()]
-  def unreferenced(%Project{sources: sources}) do
-    {actual, orig} =
-      sources
-      |> Map.values()
-      |> Enum.reduce({MapSet.new(), MapSet.new()}, fn source, {actual, orig} ->
-        case {Source.path(source), Source.path(source, 1)} do
-          {path, path} ->
-            {actual, orig}
-
-          {actual_path, orig_path} ->
-            {MapSet.put(actual, actual_path), MapSet.put(orig, orig_path)}
+          false ->
+            sources = project.sources |> Map.delete(path) |> Map.put(source.path, source)
+            {:ok, %{project | sources: sources}}
         end
-      end)
-
-    orig
-    |> MapSet.difference(actual)
-    |> MapSet.to_list()
-    |> Enum.sort()
-  end
-
-  @doc """
-  Returns a list of paths for files that have changed since reading.
-
-  The optional second argument expects a list of paths to exclude. The list
-  defaults to `[]`.
-  """
-  @spec changes(t(), [Path.t()]) :: [Path.t()]
-  def changes(%Project{sources: sources}, exclude \\ []) do
-    Enum.reduce(sources, [], fn {_id, source}, acc ->
-      path = Source.path(source)
-
-      if path in exclude || !Source.file_changed?(source) do
-        acc
-      else
-        [path | acc]
-      end
-    end)
-  end
-
-  @doc """
-  Returns conflicts between sources.
-
-  Sources with the same path have a conflict.
-
-  The optional second argument expects a list of paths to exclude. The list
-  defaults to `[]`.
-  """
-  @spec conflicts(t(), [Path.t()]) :: %{Path.t() => [Source.t()]}
-  def conflicts(%Project{sources: sources}, exclude \\ []) do
-    sources
-    |> Map.values()
-    |> conflicts(exclude, %{}, %{})
-  end
-
-  defp conflicts([], _exclude, _seen, conflicts), do: conflicts
-
-  defp conflicts([source | sources], exclude, seen, conflicts) do
-    path = Source.path(source)
-
-    if path in exclude do
-      conflicts(sources, exclude, seen, conflicts)
-    else
-      case Map.fetch(conflicts, path) do
-        {:ok, list} ->
-          conflicts = Map.put(conflicts, path, [source | list])
-          conflicts(sources, exclude, seen, conflicts)
-
-        :error ->
-          conflicts_error(source, sources, exclude, seen, conflicts, path)
-      end
     end
   end
 
-  defp conflicts_error(source, sources, exclude, seen, conflicts, path) do
-    case Map.fetch(seen, path) do
-      {:ok, item} ->
-        seen = Map.delete(seen, path)
-        conflicts = Map.put(conflicts, path, [source, item])
-        conflicts(sources, exclude, seen, conflicts)
+  defp apply_update!(source, fun) do
+    case fun.(source) do
+      %Source{path: nil} ->
+        {:error, ProjectUpdateError.exception(reason: :nopath, source: source.path)}
 
-      :error ->
-        seen = Map.put(seen, path, source)
-        conflicts(sources, exclude, seen, conflicts)
+      %Source{} = source ->
+        {:ok, source}
+
+      got ->
+        raise RuntimeError, """
+        expected %Source{} from anonymous function given to Project.update/3, got: #{inspect(got)}\
+        """
     end
+  end
+
+  @doc """
+  The same as `update/3` but raises a `Rewrite.ProjectError` exception in case
+  of an error.
+  """
+  @spec update!(t(), Path.t(), Source.t() | function()) :: t()
+  def update!(%Project{} = project, path, new) when is_binary(path) do
+    case update(project, path, new) do
+      {:ok, project} -> project
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Returns `true` when the `%Project{}` contains a `%Source{}` with the given
+  `path`.
+
+  ## Examples
+
+      iex> {:ok, project} = Project.from_sources([
+      ...>   Source.from_string(":a", "a.exs")
+      ...> ])
+      iex> Project.has_source?(project, "a.exs")
+      true
+      iex> Project.has_source?(project, "b.exs")
+      false
+  """
+  @spec has_source?(t(), Path.t()) :: boolean()
+  def has_source?(%Project{sources: sources}, path) when is_binary(path) do
+    Map.has_key?(sources, path)
   end
 
   @doc """
@@ -356,110 +453,145 @@ defmodule Rewrite.Project do
   end
 
   @doc """
-  Counts the items of the given `type` in the `project`.
-
-  The `type` `:sources` returns the count for all sources in the project,
-  including scripts.
-
-  The `type` `:scripts` returns the count of all sources with a path that ends
-  with `".exs"`.
+  Counts the sources with the given `extname` in the `project`.
   """
-  @spec count(t, type :: :sources | :scripts) :: non_neg_integer
-  def count(%Project{sources: sources}, :sources), do: map_size(sources)
-
-  def count(%Project{sources: sources}, :scripts) do
+  @spec count(t, String.t()) :: non_neg_integer
+  def count(%Project{sources: sources}, extname) do
     sources
-    |> Map.values()
-    |> Enum.filter(fn
-      %{path: nil} -> false
-      %{path: path} -> String.ends_with?(path, ".exs")
-    end)
-    |> Enum.count()
+    |> Map.keys()
+    |> Enum.count(fn path -> Path.extname(path) == extname end)
   end
 
   @doc """
-  Return a `%Project{}` where each `source` is the result of invoking `fun` on
+  Invokes `fun` for each `source` in the `project` and updates the `project`
+  with the result of `fun`.
+
+  Returns a `{:ok, project}` if any update is successful.
+
+  Returns `{:error, errors, project}` where `project` is updated for all sources
+  that are updated successful. The `errors` are the `errors` of `update/3`.
+  """
+  @spec map(t(), (Source.t() -> Source.t())) ::
+          {:ok, t()} | {:error, [{:nosource | :overwrites | :nopath, Source.t()}]}
+  def map(%Project{} = project, fun) when is_function(fun, 1) do
+    {project, errors} =
+      Enum.reduce(project, {project, []}, fn source, {project, errors} ->
+        with {:ok, updated} <- apply_update!(source, fun),
+             {:ok, project} <- do_update(project, source.path, updated) do
+          {project, errors}
+        else
+          {:error, error} -> {project, [error | errors]}
+        end
+      end)
+
+    if Enum.empty?(errors) do
+      {:ok, project}
+    else
+      {:error, errors, project}
+    end
+  end
+
+  @doc """
+  Return a `project` where each `source` is the result of invoking `fun` on
   each `source` of the given `project`.
   """
-  @spec map(t(), (Source.t() -> Source.t())) :: t()
-  def map(%Project{} = project, fun) do
+  @spec map!(t(), (Source.t() -> Source.t())) :: t()
+  def map!(%Project{} = project, fun) when is_function(fun, 1) do
     Enum.reduce(project, project, fn source, project ->
-      Project.update(project, fun.(source))
+      with {:ok, updated} <- apply_update!(source, fun),
+           {:ok, project} <- do_update(project, source.path, updated) do
+        project
+      else
+        {:error, error} -> raise error
+      end
     end)
   end
 
   @doc """
-  Saves a source to disk.
+  Writes a source to disk.
 
   The function expects a path or a `%Source{}` as first argument.
 
-  Returns `{:ok, project}` if the file was written successfully. See also
-  `Source.save/2`.
+  Returns `{:ok, project}` if the file was written successful. See also
+  `Source.write/2`.
 
-  If the given `source` not part of the `project` then it is added.
+  If the given `source` is not part of the `project` then it is added.
   """
-  @spec save(t(), Path.t() | Source.t(), nil | :force) ::
-          {:ok, t()} | {:error, :nosource | :conflict | :nofile | :changed | File.posix()}
-  def save(project, path, force \\ nil)
+  @spec write(t(), Path.t() | Source.t(), nil | :force) ::
+          {:ok, t()} | {:error, ProjectError.t() | SourceError.t()}
+  def write(project, path, force \\ nil)
 
-  def save(%Project{} = project, path, force) when is_binary(path) and force in [nil, :force] do
-    case sources(project, path) do
-      [] -> {:error, :nosource}
-      [source] -> save(project, source, force)
-      _sources -> {:error, :conflict}
+  def write(%Project{} = project, path, force) when is_binary(path) and force in [nil, :force] do
+    with {:ok, source} <- source(project, path) do
+      write(project, source, force)
     end
   end
 
-  def save(%Project{} = project, %Source{} = source, force) when force in [nil, :force] do
-    with {:ok, source} <- Source.save(source) do
-      {:ok, Project.update(project, source)}
+  def write(%Project{} = project, %Source{} = source, force) when force in [nil, :force] do
+    with {:ok, source} <- Source.write(source) do
+      {:ok, Project.update!(project, source)}
     end
   end
 
   @doc """
-  Saves all sources in the `project` to disk.
+  Writes all sources in the `project` to disk.
 
-  This function calls `Rewrite.Source.save/1` on all sources in the `project`.
+  This function calls `Rewrite.Source.write/1` on all sources in the `project`.
 
-  TODO: docs for opts
+  Returns `{:ok, project}` if all sources are written successful.
+
+  Returns `{:error, reasons, project}` where project is updated for all sources
+  that are written successful. The reasons is a keyword list with the keys
+  `File.posix()` or `:changed` and the affected path as value. The key
+  `:changed` indicates a file that was changed sind reading.
+
+  ## Options
+
+  + `exclude` - a list paths to exclude form writting.
+  + `foece`, default: `false` - forces the writting of changed files.
   """
-  @spec save_all(t(), keyword()) ::
-          {:ok, t()}
-          | {:error, :conflict}
-          | {:error, [{:changed | File.posix(), Path.t()}], t()}
-  def save_all(%Project{} = project, opts \\ []) do
+  @spec write_all(t(), opts()) ::
+          {:ok, t()} | {:error, [SourceError.t()], t()}
+  def write_all(%Project{} = project, opts \\ []) do
     exclude = Keyword.get(opts, :exclude, [])
     force = if Keyword.get(opts, :force, false), do: :force, else: nil
-    conflicts = conflicts(project, exclude)
 
-    if Enum.empty?(conflicts),
-      do: save_all(project, exclude, force),
-      else: {:error, conflicts: conflicts}
+    write_all(project, exclude, force)
   end
 
-  defp save_all(%Project{sources: sources} = project, exclude, force)
+  defp write_all(%Project{sources: sources} = project, exclude, force)
        when force in [nil, :force] do
     {project, errors} =
       sources
       |> Map.values()
       |> Enum.reduce({project, []}, fn source, acc ->
-        do_save_all(source, exclude, force, acc)
+        do_write_all(source, exclude, force, acc)
       end)
 
     if Enum.empty?(errors), do: {:ok, project}, else: {:error, errors, project}
   end
 
-  defp do_save_all(source, exclude, force, {project, errors}) do
+  defp do_write_all(source, exclude, force, {project, errors}) do
     if source.path in exclude do
       {project, errors}
     else
-      case Source.save(source, force) do
-        {:ok, source} -> {Project.update(project, source), errors}
-        {:error, :nofile} -> {project, errors}
-        {:error, reason} -> {project, [{reason, source.path} | errors]}
+      case Source.write(source, force: force) do
+        {:ok, source} -> {Project.update!(project, source), errors}
+        {:error, error} -> {project, [error | errors]}
       end
     end
   end
+
+  defp expand(inputs) do
+    inputs
+    |> List.wrap()
+    |> Enum.map(&compile_globs!/1)
+    |> Enum.flat_map(&GlobEx.ls/1)
+  end
+
+  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
+
+  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 
   defimpl Enumerable do
     def count(project) do
@@ -467,7 +599,8 @@ defmodule Rewrite.Project do
     end
 
     def member?(project, %Source{} = source) do
-      {:ok, project.sources |> Map.values() |> Enum.member?(source)}
+      member? = Map.get(project.sources, source.path) == source
+      {:ok, member?}
     end
 
     def member?(_project, _other) do
@@ -491,15 +624,4 @@ defmodule Rewrite.Project do
       Enumerable.List.reduce(sources, acc, fun)
     end
   end
-
-  defp expand(inputs) do
-    inputs
-    |> List.wrap()
-    |> Enum.map(&compile_globs!/1)
-    |> Enum.flat_map(&GlobEx.ls/1)
-  end
-
-  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
-
-  defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 end
