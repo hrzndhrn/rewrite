@@ -3,6 +3,7 @@ defmodule Rewrite.SourceTest do
 
   import ExUnit.CaptureIO
   alias Rewrite.Source
+  alias Rewrite.SourceError
   alias Sourceror.Zipper
 
   doctest Rewrite.Source
@@ -136,17 +137,153 @@ defmodule Rewrite.SourceTest do
     end
   end
 
-  describe "del/2" do
-    test "sets path to nil" do
-      source = ":a" |> Source.from_string("foo.ex") |> Source.del()
+  describe "rm/1" do
+    @describetag :tmp_dir
 
-      assert source.path == nil
+    test "deletes file", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!("a.exs", ":a")
+        source = Source.read!("a.exs")
+
+        assert Source.rm(source) == :ok
+
+        assert File.exists?("a.exs") == false
+      end)
     end
 
-    test "returns orig source" do
+    test "returns a posix error", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!("a.exs", ":a")
+        source = Source.read!("a.exs")
+
+        assert Source.rm(source) == :ok
+
+        assert Source.rm(source) ==
+                 {:error, %Rewrite.SourceError{reason: :enoent, path: "a.exs", action: :rm}}
+      end)
+    end
+
+    test "returns an error" do
       source = Source.from_string(":a")
 
-      assert Source.del(source) == source
+      assert Source.rm(source) ==
+               {:error, %Rewrite.SourceError{reason: :nopath, path: nil, action: :rm}}
+    end
+  end
+
+  describe "rm!/1" do
+    @describetag :tmp_dir
+
+    test "deletes file", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!("a.exs", ":a")
+        source = Source.read!("a.exs")
+
+        assert Source.rm!(source) == :ok
+
+        assert File.exists?("a.exs") == false
+      end)
+    end
+
+    test "raises an exception for a posix error", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!("a.exs", ":a")
+        source = Source.read!("a.exs")
+
+        assert Source.rm!(source) == :ok
+
+        messsage = ~s'could not remove file "a.exs": no such file or directory'
+
+        assert_raise SourceError, messsage, fn ->
+          Source.rm!(source) ==
+            {:error, %Rewrite.SourceError{reason: :nopath, path: nil, action: :rm}}
+        end
+      end)
+    end
+
+    test "raises an exception" do
+      source = Source.from_string(":a")
+
+      messsage = "could not remove file: no path found"
+
+      assert_raise SourceError, messsage, fn ->
+        Source.rm!(source) ==
+          {:error, %Rewrite.SourceError{reason: :nopath, path: nil, action: :rm}}
+      end
+    end
+  end
+
+  describe "write/1" do
+    @describetag :tmp_dir
+
+    test "writes changes to disk", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!("a.exs", ":a")
+        source = "a.exs" |> Source.read!() |> Source.update(code: ":b")
+
+        assert {:ok, _updated} = Source.write(source)
+
+        assert File.read!(source.path) == ":b\n"
+      end)
+    end
+
+    test "writes not to disk", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        path = "a.exs"
+        File.write!(path, ":a")
+        File.touch!(path, 1)
+        stats = File.stat!(path)
+        source = Source.read!(path)
+
+        assert {:ok, ^source} = Source.write(source)
+
+        assert File.stat!(path) == stats
+      end)
+    end
+  end
+
+  describe "write!/1" do
+    @describetag :tmp_dir
+
+    test "writes changes to disk", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        File.write!("a.exs", ":a")
+        source = "a.exs" |> Source.read!() |> Source.update(code: ":b")
+
+        assert saved = Source.write!(source)
+
+        assert File.read!(source.path) == ":b\n"
+        assert Source.updated?(saved) == false
+      end)
+    end
+
+    test "raises an exception when old file can't be removed", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        source = ":a" |> Source.from_string("a.exs") |> Source.update(path: "b.exs")
+
+        message = ~s'could not write to file "a.exs": no such file or directory'
+
+        assert_raise SourceError, message, fn ->
+          Source.write!(source)
+        end
+
+        assert File.exists?("b.exs") == false
+      end)
+    end
+
+    test "raises an exception when file changed", %{tmp_dir: tmp_dir} do
+      File.cd!(tmp_dir, fn ->
+        path = "a.exs"
+        File.write!(path, ":a")
+        source = path |> Source.read!() |> Source.update(code: ":x")
+        File.write!(path, ":b")
+
+        message = ~s'could not write to file "a.exs": file changed since reading'
+
+        assert_raise SourceError, message, fn ->
+          Source.write!(source)
+        end
+      end)
     end
   end
 
@@ -209,8 +346,6 @@ defmodule Rewrite.SourceTest do
         orig
         |> Source.update(:foo, code: changes1)
         |> Source.update(:bar, code: changes2)
-
-      assert orig.id == source.id
 
       assert_source(source, %{
         path: path,
@@ -363,7 +498,6 @@ defmodule Rewrite.SourceTest do
   end
 
   defp assert_source(%Source{} = source, expected) do
-    assert is_reference(source.id)
     assert source.path == expected.path
     assert source.code == expected.code
     assert source.modules == expected.modules

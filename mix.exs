@@ -51,9 +51,9 @@ defmodule Rewrite.MixProject do
   def preferred_cli_env do
     [
       carp: :test,
+      cover: :test,
       coveralls: :test,
       "coveralls.detail": :test,
-      "coveralls.post": :test,
       "coveralls.html": :test,
       "coveralls.github": :test
     ]
@@ -61,7 +61,8 @@ defmodule Rewrite.MixProject do
 
   defp aliases do
     [
-      carp: "test --seed 0 --max-failures 1"
+      carp: "test --trace --seed 0 --max-failures 1",
+      cover: "coveralls.html"
     ]
   end
 

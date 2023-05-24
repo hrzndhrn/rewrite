@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - dev
+
+### Breaking Changes
+
++ Refactor hash ...
++ No more conflicts ...
+
 ## 0.6.3 - 2023/03/22
 
 + Fix `Source.format/3`.
