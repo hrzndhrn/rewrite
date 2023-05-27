@@ -1,14 +1,14 @@
-defmodule Rewrite.ProjectError do
+defmodule Rewrite.Error do
   @moduledoc """
   An exception for when a function can not handle a source.
   """
 
-  alias Rewrite.ProjectError
+  alias Rewrite.Error
   alias Rewrite.Source
 
   @type reason :: :nosource | :nopath | :overwrites | :invalid_sources
 
-  @type t :: %ProjectError{
+  @type t :: %Error{
           reason: reason,
           path: Path.t() | nil,
           missing_paths: [Source.t()] | nil,
@@ -20,23 +20,23 @@ defmodule Rewrite.ProjectError do
 
   @impl true
   def exception(value) do
-    struct!(ProjectError, value)
+    struct!(Error, value)
   end
 
   @impl true
-  def message(%ProjectError{reason: :nopath}) do
+  def message(%Error{reason: :nopath}) do
     "no path found"
   end
 
-  def message(%ProjectError{reason: :nosource, path: path}) do
+  def message(%Error{reason: :nosource, path: path}) do
     "no source found for #{inspect(path)}"
   end
 
-  def message(%ProjectError{reason: :overwrites, path: path}) do
+  def message(%Error{reason: :overwrites, path: path}) do
     "overwrites #{inspect(path)}"
   end
 
-  def message(%ProjectError{reason: :invalid_sources}) do
+  def message(%Error{reason: :invalid_sources}) do
     "invalid sources"
   end
 end
