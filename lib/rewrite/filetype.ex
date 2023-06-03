@@ -1,4 +1,10 @@
 defmodule Rewrite.Filetype do
+  @moduledoc """
+  The behaviour for filetypes.
+  """
+
+  # TODO: add docs
+
   alias Rewrite.Source
 
   @type t :: map()

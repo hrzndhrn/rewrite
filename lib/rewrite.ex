@@ -30,25 +30,6 @@ defmodule Rewrite do
     %Rewrite{extensions: extensions(filetypes)}
   end
 
-  defp extensions(modules) do
-    modules
-    |> Enum.flat_map(fn module ->
-      IO.inspect(module)
-
-      module.extensions()
-      |> List.wrap()
-      |> Enum.map(fn extension -> {extension, module} end)
-    end)
-    |> Map.new()
-  end
-
-  defp read_source!(path, extensions) when not is_nil(path) do
-    ext = Path.extname(path)
-    source = Map.get(extensions, ext, Source)
-
-    source.read!(path)
-  end
-
   @doc """
   Creates a `%Rewrite{}` from the given `inputs`.
   """
@@ -603,6 +584,23 @@ defmodule Rewrite do
         {:error, error} -> {project, [error | errors]}
       end
     end
+  end
+
+  defp extensions(modules) do
+    modules
+    |> Enum.flat_map(fn module ->
+      module.extensions()
+      |> List.wrap()
+      |> Enum.map(fn extension -> {extension, module} end)
+    end)
+    |> Map.new()
+  end
+
+  defp read_source!(path, extensions) when not is_nil(path) do
+    ext = Path.extname(path)
+    source = Map.get(extensions, ext, Source)
+
+    source.read!(path)
   end
 
   defp expand(inputs) do

@@ -1,12 +1,13 @@
 defmodule Rewrite.Source.Ex do
-  # TODO:update moduledoc
   @moduledoc """
   Bla ...
   """
 
+  # TODO:update moduledoc
+
+  alias Mix.Tasks.Format
   alias Rewrite.Source
   alias Rewrite.Source.Ex
-  alias Mix.Tasks.Format
 
   defstruct [:quoted, :formatter]
 
@@ -49,7 +50,7 @@ defmodule Rewrite.Source.Ex do
 
   @impl Rewrite.Filetype
   def update(%Source{filetype: %Ex{} = ex} = source, :quoted, quoted) do
-    if (ex.quoted == quoted) |> IO.inspect() do
+    if ex.quoted == quoted do
       :ok
     else
       code = format(quoted, source.path, Map.get(source.private, :dot_formatter_opts))

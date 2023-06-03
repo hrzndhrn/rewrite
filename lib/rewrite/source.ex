@@ -9,12 +9,11 @@ defmodule Rewrite.Source do
   The struct also holds `issues` for the source.
   """
 
-  # alias Mix.Tasks.Format
   alias Rewrite.Source
+  alias Rewrite.TextDiff
+
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
-  alias Rewrite.TextDiff
-  # alias Sourceror.Zipper
 
   defstruct [
     :from,
@@ -371,8 +370,6 @@ defmodule Rewrite.Source do
         source
 
       false ->
-        IO.inspect("update")
-
         source
         |> do_update(key, value)
         |> update_updates(key, by, legacy)
@@ -381,7 +378,7 @@ defmodule Rewrite.Source do
   end
 
   def update(%Source{filetype: %module{}} = source, by, key, value) do
-    case module.update(source, key, value) |> IO.inspect() do
+    case module.update(source, key, value) do
       :ok ->
         source
 
