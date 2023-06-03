@@ -23,7 +23,13 @@ defmodule Rewrite do
   ## Examples
 
       iex> Rewrite.new()
-      %Rewrite{sources: %{}}
+      %Rewrite{
+        sources: %{},
+        extensions: %{
+          ".ex" => Source.Ex,
+          ".exs" => Source.Ex,
+        }
+      }
   """
   @spec new([module()]) :: t()
   def new(filetypes \\ [Source.Ex]) do
@@ -212,13 +218,14 @@ defmodule Rewrite do
   ## Examples
 
       iex> {:ok, project} = Rewrite.from_sources([
-      ...>   Source.from_string(":a", "a.exs"),
-      ...>   Source.from_string(":b", "b.exs")
+      ...>   Source.Ex.from_string(":a", "a.exs"),
+      ...>   Source.Ex.from_string(":b", "b.exs"),
+      ...>   Source.Ex.from_string("c", "c.txt")
       ...> ])
       iex> Rewrite.updated?(project)
       false
       iex> project = Rewrite.update!(project, "a.exs", fn source ->
-      ...>   Source.update(source, code: ":z")
+      ...>   Source.update(source, :quoted, ":z")
       ...> end)
       iex> Rewrite.updated?(project)
       true
@@ -236,8 +243,8 @@ defmodule Rewrite do
   Returns `{:error, error}` for sources with a missing path and/or duplicated
   paths.
   """
-  @spec from_sources([Source.t()]) :: {:ok, Rewrite.t()} | {:error, Error.t()}
-  def from_sources(sources) when is_list(sources) do
+  @spec from_sources([Source.t()], [module()] ) :: {:ok, Rewrite.t()} | {:error, Error.t()}
+  def from_sources(sources, filetypes \\ [Source.Ex]) when is_list(sources) do
     {sources, missing, duplicated} =
       Enum.reduce(sources, {%{}, [], []}, fn %Source{} = source, {sources, missing, duplicated} ->
         cond do
@@ -253,7 +260,7 @@ defmodule Rewrite do
       end)
 
     if Enum.empty?(missing) && Enum.empty?(duplicated) do
-      {:ok, struct!(Rewrite, sources: sources)}
+      {:ok, struct!(Rewrite, sources: sources, extensions: extensions(filetypes))}
     else
       {:error,
        Error.exception(
@@ -344,16 +351,16 @@ defmodule Rewrite do
 
   ## Examples
 
-      iex> a = Source.from_string(":a", "a.exs")
-      iex> b = Source.from_string(":b", "b.exs")
+      iex> a = Source.Ex.from_string(":a", "a.exs")
+      iex> b = Source.Ex.from_string(":b", "b.exs")
       iex> {:ok, project} = Rewrite.from_sources([a, b])
-      iex> {:ok, project} = Rewrite.update(project, "a.exs", Source.from_string(":foo", "a.exs"))
-      iex> project |> Rewrite.source!("a.exs") |> Source.code()
+      iex> {:ok, project} = Rewrite.update(project, "a.exs", Source.Ex.from_string(":foo", "a.exs"))
+      iex> project |> Rewrite.source!("a.exs") |> Source.content()
       ":foo"
-      iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, code: ":baz") end)
-      iex> project |> Rewrite.source!("a.exs") |> Source.code()
+      iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, :content, ":baz") end)
+      iex> project |> Rewrite.source!("a.exs") |> Source.content()
       ":baz"
-      iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, path: "c.exs") end)
+      iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, :path, "c.exs") end)
       iex> Rewrite.paths(project)
       ["b.exs", "c.exs"]
       iex> Rewrite.update(project, "no.exs", Source.from_string(":foo", "x.exs"))
