@@ -8,6 +8,7 @@ defmodule Rewrite.Source.Ex do
   alias Mix.Tasks.Format
   alias Rewrite.Source
   alias Rewrite.Source.Ex
+  alias Sourceror.Zipper
 
   # TODO: save formatter in struct
   defstruct [:quoted, :formatter]
@@ -60,6 +61,22 @@ defmodule Rewrite.Source.Ex do
     end
   end
 
+  def modules(%Source{filetype: %Ex{} = ex}) do
+    get_modules(ex.quoted)
+  end
+
+  # TODO: add modules/2
+
+  def quoted(%Source{filetype: %Ex{} = ex}) do
+    ex.quoted
+  end
+
+  # TODO: add quoted/2
+
+  def format(quoted) do
+    format(quoted, nil, nil)
+  end
+
   defp format(ast, file, formatter_opts) do
     file = file || "source.ex"
 
@@ -107,4 +124,29 @@ defmodule Rewrite.Source.Ex do
         ext in List.wrap(plugin.features(formatter_opts)[:extensions])
     end)
   end
+
+  defp get_modules(code) when is_binary(code) do
+    code
+    |> Sourceror.parse_string!()
+    |> get_modules()
+  end
+
+  defp get_modules(code) do
+    code
+    |> Zipper.zip()
+    |> Zipper.traverse([], fn
+      {{:defmodule, _meta, [module | _args]}, _zipper_meta} = zipper, acc ->
+        {zipper, [concat(module) | acc]}
+
+      zipper, acc ->
+        {zipper, acc}
+    end)
+    |> elem(1)
+    |> Enum.uniq()
+    |> Enum.filter(&is_atom/1)
+  end
+
+  defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
+
+  defp concat(ast), do: ast
 end

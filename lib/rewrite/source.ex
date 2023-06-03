@@ -174,6 +174,15 @@ defmodule Rewrite.Source do
 
       iex> path = "tmp/ping.txt"
       iex> File.write(path, "ping")
+      iex> source = Source.read!(path)
+      iex> new_path = "tmp/pong.ex"
+      iex> source = Source.update(source, :path, new_path)
+      iex> Source.write(source, rm: false)
+      iex> File.exists?(path)
+      true
+
+      iex> path = "tmp/ping.txt"
+      iex> File.write(path, "ping")
       iex> source = path |> Source.read!() |> Source.update(:content, "peng")
       iex> File.write(path, "pong")
       iex> Source.write(source)
@@ -685,125 +694,6 @@ defmodule Rewrite.Source do
   """
   @spec filetype(t(), filetype()) :: t()
   def filetype(%Source{} = source, filetype), do: %Source{source | filetype: filetype}
-
-  @doc """
-  Gets the value for a specific `key` in `source` or `source.filetype`.
-
-  If the key is `:content` or `:path` the value comes directly form `source`
-  other keys are applied with `source.filetype`.
-  """
-  @spec get(t(), key()) :: value()
-  def get(%Source{} = source, key) when key in [:content, :path] do
-    Map.get(source, key)
-  end
-
-  def get(%Source{filetype: filetype}, key) when not is_nil(filetype) do
-    Map.get(filetype, key)
-  end
-
-  @doc """
-  Fetches the value for a specific `key` in `source` or `source.filetype`.
-
-  If the key is `:content` or `:path` the value comes directly form `source`
-  other keys are applied with `source.filetype`.
-  """
-  @spec fetch(t(), key()) :: {:ok, value()} | :error
-  def fetch(%Source{} = source, key) when key in [:content, :path] do
-    Map.fetch(source, key)
-  end
-
-  def fetch(%Source{filetype: filetype}, key) when not is_nil(filetype) do
-    Map.fetch(filetype, key)
-  end
-
-  @doc """
-  Fetches the value for a specific `key` in `source` or `source.filetype`,
-  erroring out if `source` or `source.filetype` doesn't contain key.
-
-  If the key is `:content` or `:path` the value comes directly form `source`
-  other keys are applied with `source.filetype`.
-  """
-  @spec fetch!(t(), key()) :: {:ok, value()} | :error
-  def fetch!(%Source{} = source, key) when key in [:content, :path] do
-    Map.fetch(source, key)
-  end
-
-  def fetch!(%Source{filetype: filetype}, key) when not is_nil(filetype) do
-    Map.fetch(filetype, key)
-  end
-
-  # defp get_modules(code) when is_binary(code) do
-  #   code
-  #   |> Sourceror.parse_string!()
-  #   |> get_modules()
-  # end
-
-  # defp get_modules(code) do
-  #   code
-  #   |> Zipper.zip()
-  #   |> Zipper.traverse([], fn
-  #     {{:defmodule, _meta, [module | _args]}, _zipper_meta} = zipper, acc ->
-  #       {zipper, [concat(module) | acc]}
-
-  #     zipper, acc ->
-  #       {zipper, acc}
-  #   end)
-  #   |> elem(1)
-  #   |> Enum.uniq()
-  #   |> Enum.filter(&is_atom/1)
-  # end
-
-  # defp format(ast, file \\ nil, formatter_opts \\ nil) do
-  #   file = file || "source.ex"
-
-  #   formatter_opts =
-  #     if is_nil(formatter_opts) do
-  #       {_formatter, formatter_opts} = Format.formatter_for_file(file)
-  #       formatter_opts
-  #     else
-  #       formatter_opts
-  #     end
-
-  #   ext = Path.extname(file)
-  #   plugins = plugins_for_ext(formatter_opts, ext)
-
-  #   {quoted_to_algebra, plugins} =
-  #     case plugins do
-  #       [FreedomFormatter | plugins] ->
-  #         # For now just a workaround to support the FreedomFormatter.
-  #         {&FreedomFormatter.Formatter.to_algebra/2, plugins}
-
-  #       plugins ->
-  #         {&Code.quoted_to_algebra/2, plugins}
-  #     end
-
-  #   formatter_opts =
-  #     formatter_opts ++
-  #       [
-  #         quoted_to_algebra: quoted_to_algebra,
-  #         extension: ext,
-  #         file: file
-  #       ]
-
-  #   code = Sourceror.to_string(ast, formatter_opts)
-
-  #   Enum.reduce(plugins, code, fn plugin, code ->
-  #     plugin.format(code, formatter_opts)
-  #   end)
-  # end
-
-  # defp plugins_for_ext(formatter_opts, ext) do
-  #   formatter_opts
-  #   |> Keyword.get(:plugins, [])
-  #   |> Enum.filter(fn plugin ->
-  #     Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
-  #       ext in List.wrap(plugin.features(formatter_opts)[:extensions])
-  #   end)
-  # end
-
-  # defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
-
-  # defp concat(ast), do: ast
 
   defp hash(nil, code), do: :crypto.hash(:md5, code)
 

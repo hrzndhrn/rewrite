@@ -1,10 +1,8 @@
 defmodule Rewrite.SourceTest do
   use ExUnit.Case
 
-  import ExUnit.CaptureIO
   alias Rewrite.Source
   alias Rewrite.SourceError
-  alias Sourceror.Zipper
 
   doctest Rewrite.Source
 
@@ -220,7 +218,7 @@ defmodule Rewrite.SourceTest do
 
     test "updates the code" do
       path = "test/fixtures/source/hello.txt"
-      code = File.read!(path)
+      txt = File.read!(path)
       new = "bye"
 
       source =
@@ -228,8 +226,8 @@ defmodule Rewrite.SourceTest do
         |> Source.read!()
         |> Source.update(Tester, :content, new)
 
-      assert source.history == [{:content, Tester, "hello\n"}]
-      assert source.content == "bye"
+      assert source.history == [{:content, Tester, txt}]
+      assert source.content == new
     end
 
     # TODO: this test goes to source/ex_test.exs
@@ -388,19 +386,6 @@ defmodule Rewrite.SourceTest do
 
       assert source = Source.put_private(source, :any_key, :any_value)
       assert source.private[:any_key] == :any_value
-    end
-  end
-
-  defp assert_source(%Source{} = source, expected) do
-    assert source.path == expected.path
-    assert source.code == expected.code
-    assert source.modules == expected.modules
-    assert source.updates == Map.get(expected, :updates, [])
-    assert source.issues == Map.get(expected, :issues, [])
-    assert source.private == Map.get(expected, :private, %{})
-
-    if Map.has_key?(expected, :ast) do
-      assert source.ast == expected.ast
     end
   end
 end
