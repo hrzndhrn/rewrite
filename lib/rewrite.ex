@@ -243,7 +243,7 @@ defmodule Rewrite do
   Returns `{:error, error}` for sources with a missing path and/or duplicated
   paths.
   """
-  @spec from_sources([Source.t()], [module()] ) :: {:ok, Rewrite.t()} | {:error, Error.t()}
+  @spec from_sources([Source.t()], [module()]) :: {:ok, Rewrite.t()} | {:error, Error.t()}
   def from_sources(sources, filetypes \\ [Source.Ex]) when is_list(sources) do
     {sources, missing, duplicated} =
       Enum.reduce(sources, {%{}, [], []}, fn %Source{} = source, {sources, missing, duplicated} ->

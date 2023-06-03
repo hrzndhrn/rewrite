@@ -4,7 +4,7 @@ defmodule Rewrite.Source do
 
   The `%Source{}` contains the `code` of the file given by `path`. The module
   contains `Source.update/3` to update the `path` and/or the `code`. The changes
-  are recorded in the `updates` list.
+  are recorded in the `history` list.
 
   The struct also holds `issues` for the source.
   """
@@ -22,7 +22,7 @@ defmodule Rewrite.Source do
     :hash,
     :owner,
     :filetype,
-    updates: [],
+    history: [],
     issues: [],
     private: %{}
   ]
@@ -58,7 +58,7 @@ defmodule Rewrite.Source do
           path: Path.t() | nil,
           content: String.t(),
           hash: String.t(),
-          updates: [{kind(), by(), String.t()}],
+          history: [{kind(), by(), String.t()}],
           issues: [issue()],
           filetype: filetype(),
           from: from(),
@@ -71,16 +71,10 @@ defmodule Rewrite.Source do
 
   ## Examples
 
-      iex> source = Source.read!("test/fixtures/source/simple.ex")
-      iex> source.modules
-      [MyApp.Simple]
-      iex> source.code
+      iex> source = Source.read!("test/fixtures/source/hello.txt")
+      iex> source.content
       """
-      defmodule MyApp.Simple do
-        def foo(x) do
-          x * 2
-        end
-      end
+      hello
       """
   '''
   @spec read!(Path.t(), opts) :: t()
@@ -109,11 +103,9 @@ defmodule Rewrite.Source do
 
   ## Examples
 
-      iex> source = Source.from_string("a + b")
-      iex> source.modules
-      []
-      iex> source.code
-      "a + b"
+      iex> source = Source.from_string("hello")
+      iex> source.content
+      "hello"
   """
   @spec from_string(String.t(), Path.t() | nil, opts()) :: t()
   def from_string(content, path \\ nil, opts \\ []) do
@@ -151,52 +143,41 @@ defmodule Rewrite.Source do
       iex> ":test" |> Source.from_string() |> Source.write()
       {:error, %SourceError{reason: :nopath, path: nil, action: :write}}
 
-      iex> path = "tmp/foo.ex"
-      iex> File.write(path, ":foo")
-      iex> source = path |> Source.read!() |> Source.update(:test, code: ":bar")
+      iex> path = "tmp/foo.txt"
+      iex> File.write(path, "foo")
+      iex> source = path |> Source.read!() |> Source.update(:content, "bar")
       iex> Source.updated?(source)
       true
       iex> {:ok, source} = Source.write(source)
       iex> File.read(path)
-      {:ok, ":bar\n"}
+      {:ok, "bar\n"}
       iex> Source.updated?(source)
       false
 
-      iex> source = Source.from_string(":bar")
+      iex> source = Source.from_string("bar")
       iex> Source.write(source)
       {:error, %SourceError{reason: :nopath, path: nil, action: :write}}
-      iex> source |> Source.update(:test, path: "tmp/bar.ex") |> Source.write()
-      iex> File.read("tmp/bar.ex")
-      {:ok, ":bar\n"}
+      iex> source |> Source.update(:path, "tmp/bar.txt") |> Source.write()
+      iex> File.read("tmp/bar.txt")
+      {:ok, "bar\n"}
 
-      iex> path = "tmp/ping.ex"
-      iex> File.write(path, ":ping")
+      iex> path = "tmp/ping.txt"
+      iex> File.write(path, "ping")
       iex> source = Source.read!(path)
       iex> new_path = "tmp/pong.ex"
-      iex> source = Source.update(source, :test, path: new_path)
+      iex> source = Source.update(source, :path, new_path)
       iex> Source.write(source)
       iex> File.exists?(path)
       false
       iex> File.read(new_path)
-      {:ok, ":ping\n"}
+      {:ok, "ping\n"}
 
-      iex> path = "tmp/ping.ex"
-      iex> File.write(path, ":ping")
-      iex> source = Source.read!(path)
-      iex> new_path = "tmp/pong.ex"
-      iex> source = Source.update(source, :test, path: new_path)
-      iex> Source.write(source, rm: false)
-      iex> File.exists?(path)
-      true
-      iex> File.read(new_path)
-      {:ok, ":ping\n"}
-
-      iex> path = "tmp/ping.ex"
-      iex> File.write(path, ":ping")
-      iex> source = path |> Source.read!() |> Source.update(:test, code: "peng")
-      iex> File.write(path, ":pong")
+      iex> path = "tmp/ping.txt"
+      iex> File.write(path, "ping")
+      iex> source = path |> Source.read!() |> Source.update(:content, "peng")
+      iex> File.write(path, "pong")
       iex> Source.write(source)
-      {:error, %SourceError{reason: :changed, path: "tmp/ping.ex", action: :write}}
+      {:error, %SourceError{reason: :changed, path: "tmp/ping.txt", action: :write}}
       iex> {:ok, _source} = Source.write(source, force: true)
   """
   @spec write(t(), opts()) :: {:ok, t()} | {:error, SourceError.t()}
@@ -210,7 +191,7 @@ defmodule Rewrite.Source do
     {:error, SourceError.exception(reason: :nopath, action: :write)}
   end
 
-  defp write(%Source{updates: []} = source, _force, _rm), do: {:ok, source}
+  defp write(%Source{history: []} = source, _force, _rm), do: {:ok, source}
 
   defp write(%Source{path: path, content: content} = source, force, rm) do
     if file_changed?(source) && !force do
@@ -219,7 +200,7 @@ defmodule Rewrite.Source do
       with :ok <- maybe_rm(source, rm),
            :ok <- mkdir_p(path),
            :ok <- file_write(path, eof_newline(content)) do
-        {:ok, %{source | hash: hash(path, content), updates: [], issues: []}}
+        {:ok, %{source | hash: hash(path, content), history: [], issues: []}}
       end
     end
   end
@@ -293,7 +274,13 @@ defmodule Rewrite.Source do
   source has no changes.
   """
   @spec version(t()) :: version()
-  def version(%Source{updates: updates}), do: length(updates) + 1
+  def version(%Source{history: history}), do: length(history) + 1
+
+  @doc """
+  Returns the owner of the given `source`.
+  """
+  @spec owner(t()) :: module()
+  def owner(%Source{owner: owner}), do: owner
 
   @doc """
   Adds the given `issues` to the `source`.
@@ -338,25 +325,25 @@ defmodule Rewrite.Source do
   ## Examples
 
       iex> source =
-      ...>   "a + b"
+      ...>   "foo"
       ...>   |> Source.from_string()
-      ...>   |> Source.update(:example, path: "test/fixtures/new.exs")
-      ...>   |> Source.update(:example, content: "a - b")
-      iex> source.updates
-      [{:content, :example, "a + b"}, {:path, :example, nil}]
+      ...>   |> Source.update(Example, :path, "test/fixtures/new.exs")
+      ...>   |> Source.update(:content, "bar")
+      iex> source.history
+      [{:content, Rewrite, "foo"}, {:path, Example, nil}]
       iex> source.content
-      "a - b"
+      "bar"
 
-  If the new value equal to the current value, no updates will be added.
+  If the new value is equal to the current value, no history will be added.
 
       iex> source =
-      ...>   "a = 42"
+      ...>   "42"
       ...>   |> Source.from_string()
-      ...>   |> Source.update(:example, content: "b = 21")
-      ...>   |> Source.update(:example, content: "b = 21")
-      ...>   |> Source.update(:example, content: "b = 21")
-      iex> source.updates
-      [{:content, :example, "a = 42"}]
+      ...>   |> Source.update(Example, :content, "21")
+      ...>   |> Source.update(Example, :content, "21")
+      ...>   |> Source.update(Example, :content, "21")
+      iex> source.history
+      [{:content, Example, "42"}]
   """
   @spec update(Source.t(), by(), key(), value()) :: Source.t()
   def update(source, by \\ Rewrite, key, value)
@@ -372,7 +359,7 @@ defmodule Rewrite.Source do
       false ->
         source
         |> do_update(key, value)
-        |> update_updates(key, by, legacy)
+        |> update_history(key, by, legacy)
         |> update_filetype(key)
     end
   end
@@ -454,26 +441,26 @@ defmodule Rewrite.Source do
 
   ## Examples
 
-      iex> source = Source.from_string("a = 42")
+      iex> source = Source.from_string("foo")
       iex> Source.updated?(source)
       false
-      iex> source = Source.update(source, :example, code: "b = 21")
+      iex> source = Source.update(source, :content, "bar")
       iex> Source.updated?(source)
       true
       iex> Source.updated?(source, :path)
       false
-      iex> Source.updated?(source, :code)
+      iex> Source.updated?(source, :content)
       true
   """
-  @spec updated?(t(), kind :: :code | :path | :any) :: boolean()
+  @spec updated?(t(), kind :: :content | :path | :any) :: boolean()
   def updated?(source, kind \\ :any)
 
-  def updated?(%Source{updates: []}, _kind), do: false
+  def updated?(%Source{history: []}, _kind), do: false
 
-  def updated?(%Source{updates: _updates}, :any), do: true
+  def updated?(%Source{history: _history}, :any), do: true
 
-  def updated?(%Source{updates: updates}, kind) when kind in [:code, :path] do
-    Enum.any?(updates, fn
+  def updated?(%Source{history: history}, kind) when kind in [:content, :path] do
+    Enum.any?(history, fn
       {^kind, _by, _value} -> true
       _update -> false
     end)
@@ -486,24 +473,24 @@ defmodule Rewrite.Source do
 
   ## Examples
 
-      iex> File.write("tmp/code.ex", "a = 24")
-      iex> source = Source.read!("tmp/code.ex")
+      iex> File.write("tmp/hello.txt", "hello")
+      iex> source = Source.read!("tmp/hello.txt")
       iex> Source.file_changed?(source)
       false
-      iex> File.write("tmp/code.ex", "a = 42")
+      iex> File.write("tmp/hello.txt", "Hello, world!")
       iex> Source.file_changed?(source)
       true
-      iex> source = Source.update(source, :test, path: nil)
+      iex> source = Source.update(source, :path, nil)
       iex> Source.file_changed?(source)
       true
-      iex> File.write("tmp/code.ex", "a = 24")
+      iex> File.write("tmp/hello.txt", "hello")
       iex> Source.file_changed?(source)
       false
-      iex> File.rm!("tmp/code.ex")
+      iex> File.rm!("tmp/hello.txt")
       iex> Source.file_changed?(source)
       true
 
-      iex> source = Source.from_string("a = 77")
+      iex> source = Source.from_string("hello")
       iex> Source.file_changed?(source)
       false
   """
@@ -529,9 +516,9 @@ defmodule Rewrite.Source do
 
       iex> source =
       ...>   "a + b"
-      ...>   |> Source.from_string("some/where/plus.exs")
+      ...>   |> Source.Ex.from_string("some/where/plus.exs")
       ...>   |> Source.add_issue(%{issue: :foo})
-      ...>   |> Source.update(:example, path: "some/where/else/plus.exs")
+      ...>   |> Source.update(:path, "some/where/else/plus.exs")
       ...>   |> Source.add_issue(%{issue: :bar})
       iex> Source.has_issues?(source)
       true
@@ -539,7 +526,7 @@ defmodule Rewrite.Source do
       true
       iex> Source.has_issues?(source, :all)
       true
-      iex> source = Source.update(source, :example, code: "a - b")
+      iex> source = Source.update(source, :content, "a - b")
       iex> Source.has_issues?(source)
       false
       iex> Source.has_issues?(source, 2)
@@ -556,8 +543,8 @@ defmodule Rewrite.Source do
     has_issues?(source, version(source))
   end
 
-  def has_issues?(%Source{issues: issues, updates: updates}, version)
-      when version >= 1 and version <= length(updates) + 1 do
+  def has_issues?(%Source{issues: issues, history: history}, version)
+      when version >= 1 and version <= length(history) + 1 do
     issues
     |> Enum.filter(fn {for_version, _issue} -> for_version == version end)
     |> not_empty?()
@@ -575,62 +562,24 @@ defmodule Rewrite.Source do
   ## Examples
 
       iex> source =
-      ...>   "a + b"
-      ...>   |> Source.from_string("some/where/plus.exs")
-      ...>   |> Source.update(:example, path: "some/where/else/plus.exs")
+      ...>   "hello"
+      ...>   |> Source.from_string("some/where/hello.txt")
+      ...>   |> Source.update(:path, "some/where/else/hello.txt")
       ...> Source.path(source, 1)
-      "some/where/plus.exs"
+      "some/where/hello.txt"
       iex> Source.path(source, 2)
-      "some/where/else/plus.exs"
+      "some/where/else/hello.txt"
   """
   @spec path(t(), version()) :: Path.t() | nil
-  def path(%Source{path: path, updates: updates}, version)
-      when version >= 1 and version <= length(updates) + 1 do
-    updates
-    |> Enum.take(length(updates) - version + 1)
+  def path(%Source{path: path, history: history}, version)
+      when version >= 1 and version <= length(history) + 1 do
+    history
+    |> Enum.take(length(history) - version + 1)
     |> Enum.reduce(path, fn
       {:path, _by, path}, _path -> path
       _version, path -> path
     end)
   end
-
-  # @doc """
-  # Returns the current modules for the given `source`.
-  # """
-  # @spec modules(t()) :: [module()]
-  # def modules(%Source{modules: modules}), do: modules
-
-  # @doc ~S'''
-  # Returns the modules of a `source` for the given `version`.
-
-  # ## Examples
-
-  #     iex> bar =
-  #     ...>   """
-  #     ...>   defmodule Bar do
-  #     ...>      def bar, do: :bar
-  #     ...>   end
-  #     ...>   """
-  #     iex> foo =
-  #     ...>   """
-  #     ...>   defmodule Foo do
-  #     ...>      def foo, do: :foo
-  #     ...>   end
-  #     ...>   """
-  #     iex> source = Source.from_string(bar)
-  #     iex> source = Source.update(source, :example, code: bar <> foo)
-  #     iex> Source.modules(source)
-  #     [Foo, Bar]
-  #     iex> Source.modules(source, 2)
-  #     [Foo, Bar]
-  #     iex> Source.modules(source, 1)
-  #     [Bar]
-  # '''
-  # @spec modules(t(), version()) :: [module()]
-  # def modules(%Source{updates: updates} = source, version)
-  #     when version >= 1 and version <= length(updates) + 1 do
-  #   source |> code(version) |> get_modules()
-  # end
 
   @doc """
   Returns the current content for the given `source`.
@@ -655,8 +604,8 @@ defmodule Rewrite.Source do
       ...>      def foo, do: :foo
       ...>   end
       ...>   """
-      iex> source = Source.from_string(bar)
-      iex> source = Source.update(source, :example, content: foo)
+      iex> source = Source.Ex.from_string(bar)
+      iex> source = Source.update(source, :content, foo)
       iex> Source.content(source) == foo
       true
       iex> Source.content(source, 2) == foo
@@ -665,69 +614,15 @@ defmodule Rewrite.Source do
       true
   '''
   @spec content(t(), version()) :: String.t()
-  def content(%Source{content: content, updates: updates}, version)
-      when version >= 1 and version <= length(updates) + 1 do
-    updates
-    |> Enum.take(length(updates) - version + 1)
+  def content(%Source{content: content, history: history}, version)
+      when version >= 1 and version <= length(history) + 1 do
+    history
+    |> Enum.take(length(history) - version + 1)
     |> Enum.reduce(content, fn
       {:content, _by, content}, _content -> content
       _version, content -> content
     end)
   end
-
-  # @doc """
-  # Returns the AST for the given `%Source`.
-
-  # The returned extended AST is generated with `Sourceror.parse_string/1`.
-
-  # Uses the current `code` of the `source`.
-
-  # ## Examples
-
-  #     iex> "def foo, do: :foo" |> Source.from_string() |> Source.ast()
-  #     {:def, [trailing_comments: [], leading_comments: [], line: 1, column: 1],
-  #       [
-  #         {:foo, [trailing_comments: [], leading_comments: [], line: 1, column: 5], nil},
-  #         [
-  #           {{:__block__,
-  #             [trailing_comments: [], leading_comments: [], format: :keyword, line: 1, column: 10],
-  #             [:do]},
-  #            {:__block__, [trailing_comments: [], leading_comments: [], line: 1, column: 14], [:foo]}}
-  #         ]
-  #       ]
-  #     }
-  # """
-  # @spec ast(t()) :: Macro.t()
-  # def ast(%Source{ast: ast}), do: ast
-
-  # @doc """
-  # Returns the owner of the given `source`.
-  # """
-  # @spec owner(t()) :: module()
-  # def owner(%Source{owner: owner}), do: owner
-
-  # @doc """
-  # Compares the `path` values of the given sources.
-
-  # ## Examples
-
-  #     iex> a = Source.from_string(":foo", "a.exs")
-  #     iex> Source.compare(a, a)
-  #     :eq
-  #     iex> b = Source.from_string(":foo", "b.exs")
-  #     iex> Source.compare(a, b)
-  #     :lt
-  #     iex> Source.compare(b, a)
-  #     :gt
-  # """
-  # @spec compare(t(), t()) :: :lt | :eq | :gt
-  # def compare(%Source{path: path1}, %Source{path: path2}) do
-  #   cond do
-  #     path1 < path2 -> :lt
-  #     path1 > path2 -> :gt
-  #     true -> :eq
-  #   end
-  # end
 
   @doc ~S'''
   Returns iodata showing all diffs of the given `source`.
@@ -743,11 +638,11 @@ defmodule Rewrite.Source do
       ...> end
       ...> """
       iex> formatted = code |> Code.format_string!() |> IO.iodata_to_binary()
-      iex> source = Source.from_string(code)
+      iex> source = Source.Ex.from_string(code)
       iex> source |> Source.diff() |> IO.iodata_to_binary()
       ""
       iex> source
-      ...> |> Source.update(Test, code: formatted)
+      ...> |> Source.update(:content, formatted)
       ...> |> Source.diff(color: false)
       ...> |> IO.iodata_to_binary()
       """
@@ -914,8 +809,8 @@ defmodule Rewrite.Source do
 
   defp hash(path, code), do: :crypto.hash(:md5, path <> code)
 
-  defp update_updates(%Source{updates: updates} = source, key, by, legacy) do
-    %{source | updates: [{key, by, legacy} | updates]}
+  defp update_history(%Source{history: history} = source, key, by, legacy) do
+    %{source | history: [{key, by, legacy} | history]}
   end
 
   defp not_empty?(enum), do: not Enum.empty?(enum)

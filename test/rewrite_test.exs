@@ -167,7 +167,7 @@ defmodule RewriteTest do
                       hash:
                         <<174, 49, 163, 166, 58, 86, 116, 125, 28, 58, 67, 31, 0, 34, 7, 180>>,
                       owner: Rewrite,
-                      updates: [],
+                      history: [],
                       issues: [],
                       private: %{}
                     }

@@ -9,6 +9,7 @@ defmodule Rewrite.Source.Ex do
   alias Rewrite.Source
   alias Rewrite.Source.Ex
 
+  # TODO: save formatter in struct
   defstruct [:quoted, :formatter]
 
   @behaviour Rewrite.Filetype
