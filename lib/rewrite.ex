@@ -34,6 +34,7 @@ defmodule Rewrite do
     modules
     |> Enum.flat_map(fn module ->
       IO.inspect(module)
+
       module.extensions()
       |> List.wrap()
       |> Enum.map(fn extension -> {extension, module} end)
