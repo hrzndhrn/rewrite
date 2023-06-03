@@ -82,28 +82,36 @@ defmodule RewriteTest do
     end
   end
 
-  describe "read!/1" do
+  describe "new!/2" do
     test "creates a project from one file" do
-      inputs = ["test/fixtures/source/simple.ex"]
-      assert project = Rewrite.read!(inputs)
+      path = "test/fixtures/source/simple.ex"
+      assert project = Rewrite.new!(path)
       assert Enum.count(project.sources) == 1
+      assert %Source{filetype: %Source.Ex{}} = Rewrite.source!(project, path)
+    end
+
+    test "creates a project from one file withou extensions" do
+      path = "test/fixtures/source/simple.ex"
+      assert project = Rewrite.new!(path, [])
+      assert Enum.count(project.sources) == 1
+      assert %Source{filetype: nil} = Rewrite.source!(project, path)
     end
 
     test "creates a project from wildcard" do
       inputs = ["test/fixtures/source/*.ex"]
-      assert project = Rewrite.read!(inputs)
+      assert project = Rewrite.new!(inputs)
       assert Enum.count(project.sources) == 4
     end
 
     test "creates a project from wildcards" do
       inputs = ["test/fixtures/source/d*.ex", "test/fixtures/source/s*.ex"]
-      assert project = Rewrite.read!(inputs)
+      assert project = Rewrite.new!(inputs)
       assert Enum.count(project.sources) == 2
     end
 
     test "creates a project from glob" do
       inputs = [GlobEx.compile!("test/fixtures/source/*.ex")]
-      assert project = Rewrite.read!(inputs)
+      assert project = Rewrite.new!(inputs)
       assert Enum.count(project.sources) == 4
     end
 
@@ -113,7 +121,7 @@ defmodule RewriteTest do
         GlobEx.compile!("test/fixtures/source/s*.ex")
       ]
 
-      assert project = Rewrite.read!(inputs)
+      assert project = Rewrite.new!(inputs)
       assert Enum.count(project.sources) == 2
     end
   end
@@ -146,22 +154,18 @@ defmodule RewriteTest do
   describe "from_sources/1" do
     test "creates a project" do
       assert Rewrite.from_sources([
-               Source.from_string(":b", "b.exs")
+               Source.from_string("b", "b.txt")
              ]) ==
                {:ok,
                 %Rewrite{
                   sources: %{
                     "b.exs" => %Source{
                       from: :string,
-                      path: "b.exs",
-                      code: ":b",
-                      ast:
-                        {:__block__,
-                         [trailing_comments: [], leading_comments: [], line: 1, column: 1], [:b]},
+                      path: "b.txt",
+                      content: "b",
                       hash:
                         <<104, 60, 21, 81, 150, 163, 193, 135, 204, 138, 176, 171, 173, 1, 220,
                           124>>,
-                      modules: [],
                       owner: Rewrite,
                       updates: [],
                       issues: [],

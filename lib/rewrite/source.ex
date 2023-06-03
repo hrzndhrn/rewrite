@@ -9,20 +9,20 @@ defmodule Rewrite.Source do
   The struct also holds `issues` for the source.
   """
 
-  alias Mix.Tasks.Format
+  # alias Mix.Tasks.Format
   alias Rewrite.Source
   alias Rewrite.SourceError
+  alias Rewrite.UpdateError
   alias Rewrite.TextDiff
-  alias Sourceror.Zipper
+  # alias Sourceror.Zipper
 
   defstruct [
     :from,
     :path,
-    :code,
-    :ast,
+    :content,
     :hash,
-    :modules,
     :owner,
+    :filetype,
     updates: [],
     issues: [],
     private: %{}
@@ -36,24 +36,34 @@ defmodule Rewrite.Source do
   """
   @type version :: pos_integer()
 
+  # TODO: ???
   @type kind :: :code | :path
 
+  # TODO by and owner or just one of this
   @type by :: module()
+  @type owner :: module()
+
+  @type key :: atom()
+  @type value :: any()
+
+  @type content :: String.t()
+  @type extension :: String.t()
 
   @type from :: :file | :ast | :string
 
-  @type issue :: term()
+  @type issue :: any()
+
+  @type filetype :: %{}
 
   @type t :: %Source{
           path: Path.t() | nil,
-          code: String.t(),
-          ast: Macro.t(),
+          content: String.t(),
           hash: String.t(),
-          modules: [module()],
           updates: [{kind(), by(), String.t()}],
           issues: [issue()],
+          filetype: filetype(),
           from: from(),
-          owner: module(),
+          owner: owner(),
           private: map()
         }
 
@@ -74,34 +84,24 @@ defmodule Rewrite.Source do
       end
       """
   '''
-  @spec read!(Path.t()) :: t()
-  def read!(path) do
-    code = File.read!(path)
-    new(code: code, path: path, from: :file)
+  @spec read!(Path.t(), opts) :: t()
+  def read!(path, opts \\ []) do
+    content = File.read!(path)
+    owner = Keyword.get(opts, :owner, Rewrite)
+    new(content: content, path: path, owner: owner, from: :file)
   end
 
   defp new(fields) do
-    {code, ast} =
-      case Keyword.get(fields, :ast) do
-        nil ->
-          code = Keyword.fetch!(fields, :code)
-          {code, Sourceror.parse_string!(code)}
-
-        ast ->
-          {format(ast), ast}
-      end
-
+    content = Keyword.fetch!(fields, :content)
     path = Keyword.get(fields, :path, nil)
 
     struct!(
       Source,
+      content: content,
       from: Keyword.fetch!(fields, :from),
-      path: Keyword.get(fields, :path, nil),
-      code: code,
-      ast: ast,
-      hash: hash(path, code),
-      modules: get_modules(ast),
-      owner: Keyword.get(fields, :owner, Rewrite)
+      hash: hash(path, content),
+      owner: Keyword.get(fields, :owner, Rewrite),
+      path: Keyword.get(fields, :path, nil)
     )
   end
 
@@ -116,26 +116,11 @@ defmodule Rewrite.Source do
       iex> source.code
       "a + b"
   """
-  @spec from_string(String.t(), nil | Path.t(), module()) :: t()
-  def from_string(string, path \\ nil, owner \\ Rewrite) do
-    new(code: string, path: path, owner: owner, from: :string)
-  end
+  @spec from_string(String.t(), Path.t() | nil, opts()) :: t()
+  def from_string(content, path \\ nil, opts \\ []) do
+    owner = Keyword.get(opts, :owner, Rewrite)
 
-  @doc """
-  Creates a new `%Source{}` from the given `ast`.
-
-  ## Examples
-
-      iex> ast = Sourceror.parse_string!("a + b")
-      iex> source = Source.from_ast(ast)
-      iex> source.modules
-      []
-      iex> source.code
-      "a + b"
-  """
-  @spec from_ast(Macro.t(), nil | Path.t(), module()) :: t()
-  def from_ast(ast, path \\ nil, owner \\ Rewrite) do
-    new(ast: ast, path: path, owner: owner, from: :ast)
+    new(content: content, path: path, owner: owner, from: :string)
   end
 
   @doc ~S"""
@@ -215,8 +200,7 @@ defmodule Rewrite.Source do
       {:error, %SourceError{reason: :changed, path: "tmp/ping.ex", action: :write}}
       iex> {:ok, _source} = Source.write(source, force: true)
   """
-  @spec write(t(), opts()) ::
-          {:ok, t()} | {:error, SourceError.t()}
+  @spec write(t(), opts()) :: {:ok, t()} | {:error, SourceError.t()}
   def write(%Source{} = source, opts \\ []) do
     force = Keyword.get(opts, :force, false)
     rm = Keyword.get(opts, :rm, true)
@@ -229,14 +213,14 @@ defmodule Rewrite.Source do
 
   defp write(%Source{updates: []} = source, _force, _rm), do: {:ok, source}
 
-  defp write(%Source{path: path, code: code} = source, force, rm) do
+  defp write(%Source{path: path, content: content} = source, force, rm) do
     if file_changed?(source) && !force do
       {:error, SourceError.exception(reason: :changed, path: source.path, action: :write)}
     else
       with :ok <- maybe_rm(source, rm),
            :ok <- mkdir_p(path),
-           :ok <- file_write(path, eof_newline(code)) do
-        {:ok, %{source | hash: hash(path, code), updates: [], issues: []}}
+           :ok <- file_write(path, eof_newline(content)) do
+        {:ok, %{source | hash: hash(path, content), updates: [], issues: []}}
       end
     end
   end
@@ -344,13 +328,13 @@ defmodule Rewrite.Source do
       iex> source.private[:origin]
       :example
   """
-  @spec put_private(t(), key :: term(), value :: term()) :: t()
+  @spec put_private(t(), key :: any(), value()) :: t()
   def put_private(%Source{} = source, key, value) do
     Map.update!(source, :private, &Map.put(&1, key, value))
   end
 
   @doc ~S"""
-  Updates the `code` or the `path` of a `source`.
+  Updates the `content` or the `path` of a `source`.
 
   ## Examples
 
@@ -358,10 +342,10 @@ defmodule Rewrite.Source do
       ...>   "a + b"
       ...>   |> Source.from_string()
       ...>   |> Source.update(:example, path: "test/fixtures/new.exs")
-      ...>   |> Source.update(:example, code: "a - b")
+      ...>   |> Source.update(:example, content: "a - b")
       iex> source.updates
-      [{:code, :example, "a + b"}, {:path, :example, nil}]
-      iex> source.code
+      [{:content, :example, "a + b"}, {:path, :example, nil}]
+      iex> source.content
       "a - b"
 
   If the new value equal to the current value, no updates will be added.
@@ -369,54 +353,101 @@ defmodule Rewrite.Source do
       iex> source =
       ...>   "a = 42"
       ...>   |> Source.from_string()
-      ...>   |> Source.update(:example, code: "b = 21")
-      ...>   |> Source.update(:example, code: "b = 21")
-      ...>   |> Source.update(:example, code: "b = 21")
+      ...>   |> Source.update(:example, content: "b = 21")
+      ...>   |> Source.update(:example, content: "b = 21")
+      ...>   |> Source.update(:example, content: "b = 21")
       iex> source.updates
-      [{:code, :example, "a = 42"}]
+      [{:content, :example, "a = 42"}]
   """
-  @spec update(t(), by(), [code: String.t()] | [ast: Macro.t()] | [path: Path.t()]) :: t()
-  def update(%Source{} = source, by \\ Rewrite, [{key, value}])
-      when is_atom(by) and key in [:ast, :code, :path] do
-    legacy = Map.fetch!(source, key)
+  @spec update(Source.t(), by(), key(), value()) :: Source.t()
+  def update(source, by \\ Rewrite, key, value)
 
-    value = if key == :code, do: value, else: value
+  def update(%Source{} = source, by, key, value)
+      when is_atom(by) and key in [:content, :path] do
+    legacy = Map.fetch!(source, key)
 
     case legacy == value do
       true ->
         source
 
       false ->
-        update =
-          case key do
-            :ast -> {:code, by, source.code}
-            _else -> {key, by, legacy}
-          end
+        IO.inspect("update")
 
         source
         |> do_update(key, value)
-        |> update_updates(update)
-        |> update_modules(key)
+        |> update_updates(key, by, legacy)
+        |> update_filetype(key)
     end
   end
 
-  defp do_update(source, :code, code) do
-    ast = Sourceror.parse_string!(code)
-    %Source{source | ast: ast, code: code}
-  end
+  def update(%Source{filetype: %module{}} = source, by, key, value) do
+    case module.update(source, key, value) |> IO.inspect() do
+      :ok ->
+        source
 
-  defp do_update(%Source{path: path, private: private} = source, :ast, ast) do
-    %Source{source | ast: ast, code: format(ast, path, Map.get(private, :dot_formatter_opts))}
+      {:ok, updates} ->
+        source
+        |> update_filetype(updates[:filetype])
+        |> update_content(updates[:content], by)
+
+      :error ->
+        {:error,
+         UpdateError.exception(
+           reason: :filetype,
+           source: source.path,
+           filetype: module,
+           key: key,
+           value: value
+         )}
+    end
   end
 
   defp do_update(source, :path, path) do
     %Source{source | path: path}
   end
 
-  defp update_modules(source, key) when key in [:ast, :code],
-    do: %{source | modules: get_modules(source.code)}
+  defp do_update(source, :content, content) do
+    %Source{source | content: content}
+  end
 
-  defp update_modules(source, _key), do: source
+  defp update_filetype(source, nil), do: source
+
+  defp update_filetype(%{filtetype: nil} = source, _filtetype), do: source
+
+  defp update_filetype(%{filetype: %module{}} = source, key) when is_atom(key) do
+    case module.update(source, key) do
+      :ok ->
+        source
+
+      {:ok, filetype} ->
+        update_filetype(source, filetype)
+
+      :error ->
+        {:error,
+         UpdateError.exception(
+           reason: :filetype,
+           source: source.path,
+           filetype: module,
+           key: key,
+           value: Map.fetch(source, key)
+         )}
+    end
+  end
+
+  defp update_filetype(source, filetype) do
+    %Source{source | filetype: filetype}
+  end
+
+  defp update_content(source, nil, _b), do: source
+
+  defp update_content(source, content, by) do
+    update(source, by, :content, content)
+  end
+
+  # defp update_modules(source, key) when key in [:ast, :code],
+  #   do: %{source | modules: get_modules(source.code)}
+
+  # defp update_modules(source, _key), do: source
 
   @doc """
   Returns `true` if the source was updated.
@@ -490,28 +521,6 @@ defmodule Rewrite.Source do
       _error -> true
     end
   end
-
-  @doc """
-  Returns `true` if the `%Source{}` was created.
-
-  Created means here that a new file is written when saving.
-
-  ## Examples
-
-      iex> source = Source.read!("test/fixtures/source/simple.ex")
-      ...> Source.created?(source)
-      false
-
-      iex> source = Source.from_string(":foo")
-      ...> Source.created?(source)
-      true
-
-      iex> source = Source.from_string(":foo", "test/fixtures/new.ex", Test)
-      ...> Source.created?(source)
-      true
-  """
-  @spec created?(t()) :: boolean
-  def created?(%Source{from: from}), do: from != :file
 
   @doc """
   Returns `true` if the `source` has issues for the given `version`.
@@ -588,14 +597,52 @@ defmodule Rewrite.Source do
     end)
   end
 
+  # @doc """
+  # Returns the current modules for the given `source`.
+  # """
+  # @spec modules(t()) :: [module()]
+  # def modules(%Source{modules: modules}), do: modules
+
+  # @doc ~S'''
+  # Returns the modules of a `source` for the given `version`.
+
+  # ## Examples
+
+  #     iex> bar =
+  #     ...>   """
+  #     ...>   defmodule Bar do
+  #     ...>      def bar, do: :bar
+  #     ...>   end
+  #     ...>   """
+  #     iex> foo =
+  #     ...>   """
+  #     ...>   defmodule Foo do
+  #     ...>      def foo, do: :foo
+  #     ...>   end
+  #     ...>   """
+  #     iex> source = Source.from_string(bar)
+  #     iex> source = Source.update(source, :example, code: bar <> foo)
+  #     iex> Source.modules(source)
+  #     [Foo, Bar]
+  #     iex> Source.modules(source, 2)
+  #     [Foo, Bar]
+  #     iex> Source.modules(source, 1)
+  #     [Bar]
+  # '''
+  # @spec modules(t(), version()) :: [module()]
+  # def modules(%Source{updates: updates} = source, version)
+  #     when version >= 1 and version <= length(updates) + 1 do
+  #   source |> code(version) |> get_modules()
+  # end
+
   @doc """
-  Returns the current modules for the given `source`.
+  Returns the current content for the given `source`.
   """
-  @spec modules(t()) :: [module()]
-  def modules(%Source{modules: modules}), do: modules
+  @spec content(t()) :: String.t()
+  def content(%Source{content: content}), do: content
 
   @doc ~S'''
-  Returns the modules of a `source` for the given `version`.
+  Returns the content of a `source` for the given `version`.
 
   ## Examples
 
@@ -612,116 +659,78 @@ defmodule Rewrite.Source do
       ...>   end
       ...>   """
       iex> source = Source.from_string(bar)
-      iex> source = Source.update(source, :example, code: bar <> foo)
-      iex> Source.modules(source)
-      [Foo, Bar]
-      iex> Source.modules(source, 2)
-      [Foo, Bar]
-      iex> Source.modules(source, 1)
-      [Bar]
-  '''
-  @spec modules(t(), version()) :: [module()]
-  def modules(%Source{updates: updates} = source, version)
-      when version >= 1 and version <= length(updates) + 1 do
-    source |> code(version) |> get_modules()
-  end
-
-  @doc """
-  Returns the current code for the given `source`.
-  """
-  @spec code(t()) :: String.t()
-  def code(%Source{code: code}), do: code
-
-  @doc ~S'''
-  Returns the code of a `source` for the given `version`.
-
-  ## Examples
-
-      iex> bar =
-      ...>   """
-      ...>   defmodule Bar do
-      ...>      def bar, do: :bar
-      ...>   end
-      ...>   """
-      iex> foo =
-      ...>   """
-      ...>   defmodule Foo do
-      ...>      def foo, do: :foo
-      ...>   end
-      ...>   """
-      iex> source = Source.from_string(bar)
-      iex> source = Source.update(source, :example, code: foo)
-      iex> Source.code(source) == foo
+      iex> source = Source.update(source, :example, content: foo)
+      iex> Source.content(source) == foo
       true
-      iex> Source.code(source, 2) == foo
+      iex> Source.content(source, 2) == foo
       true
-      iex> Source.code(source, 1) == bar
+      iex> Source.content(source, 1) == bar
       true
   '''
-  @spec code(t(), version()) :: String.t()
-  def code(%Source{code: code, updates: updates}, version)
+  @spec content(t(), version()) :: String.t()
+  def content(%Source{content: content, updates: updates}, version)
       when version >= 1 and version <= length(updates) + 1 do
     updates
     |> Enum.take(length(updates) - version + 1)
-    |> Enum.reduce(code, fn
-      {:code, _by, code}, _code -> code
-      _version, code -> code
+    |> Enum.reduce(content, fn
+      {:content, _by, content}, _content -> content
+      _version, content -> content
     end)
   end
 
-  @doc """
-  Returns the AST for the given `%Source`.
+  # @doc """
+  # Returns the AST for the given `%Source`.
 
-  The returned extended AST is generated with `Sourceror.parse_string/1`.
+  # The returned extended AST is generated with `Sourceror.parse_string/1`.
 
-  Uses the current `code` of the `source`.
+  # Uses the current `code` of the `source`.
 
-  ## Examples
+  # ## Examples
 
-      iex> "def foo, do: :foo" |> Source.from_string() |> Source.ast()
-      {:def, [trailing_comments: [], leading_comments: [], line: 1, column: 1],
-        [
-          {:foo, [trailing_comments: [], leading_comments: [], line: 1, column: 5], nil},
-          [
-            {{:__block__,
-              [trailing_comments: [], leading_comments: [], format: :keyword, line: 1, column: 10],
-              [:do]},
-             {:__block__, [trailing_comments: [], leading_comments: [], line: 1, column: 14], [:foo]}}
-          ]
-        ]
-      }
-  """
-  @spec ast(t()) :: Macro.t()
-  def ast(%Source{ast: ast}), do: ast
+  #     iex> "def foo, do: :foo" |> Source.from_string() |> Source.ast()
+  #     {:def, [trailing_comments: [], leading_comments: [], line: 1, column: 1],
+  #       [
+  #         {:foo, [trailing_comments: [], leading_comments: [], line: 1, column: 5], nil},
+  #         [
+  #           {{:__block__,
+  #             [trailing_comments: [], leading_comments: [], format: :keyword, line: 1, column: 10],
+  #             [:do]},
+  #            {:__block__, [trailing_comments: [], leading_comments: [], line: 1, column: 14], [:foo]}}
+  #         ]
+  #       ]
+  #     }
+  # """
+  # @spec ast(t()) :: Macro.t()
+  # def ast(%Source{ast: ast}), do: ast
 
-  @doc """
-  Returns the owner of the given `source`.
-  """
-  @spec owner(t()) :: module()
-  def owner(%Source{owner: owner}), do: owner
+  # @doc """
+  # Returns the owner of the given `source`.
+  # """
+  # @spec owner(t()) :: module()
+  # def owner(%Source{owner: owner}), do: owner
 
-  @doc """
-  Compares the `path` values of the given sources.
+  # @doc """
+  # Compares the `path` values of the given sources.
 
-  ## Examples
+  # ## Examples
 
-      iex> a = Source.from_string(":foo", "a.exs")
-      iex> Source.compare(a, a)
-      :eq
-      iex> b = Source.from_string(":foo", "b.exs")
-      iex> Source.compare(a, b)
-      :lt
-      iex> Source.compare(b, a)
-      :gt
-  """
-  @spec compare(t(), t()) :: :lt | :eq | :gt
-  def compare(%Source{path: path1}, %Source{path: path2}) do
-    cond do
-      path1 < path2 -> :lt
-      path1 > path2 -> :gt
-      true -> :eq
-    end
-  end
+  #     iex> a = Source.from_string(":foo", "a.exs")
+  #     iex> Source.compare(a, a)
+  #     :eq
+  #     iex> b = Source.from_string(":foo", "b.exs")
+  #     iex> Source.compare(a, b)
+  #     :lt
+  #     iex> Source.compare(b, a)
+  #     :gt
+  # """
+  # @spec compare(t(), t()) :: :lt | :eq | :gt
+  # def compare(%Source{path: path1}, %Source{path: path2}) do
+  #   cond do
+  #     path1 < path2 -> :lt
+  #     path1 > path2 -> :gt
+  #     true -> :eq
+  #   end
+  # end
 
   @doc ~S'''
   Returns iodata showing all diffs of the given `source`.
@@ -757,8 +766,8 @@ defmodule Rewrite.Source do
   @spec diff(t(), opts()) :: iodata()
   def diff(%Source{} = source, opts \\ []) do
     TextDiff.format(
-      source |> code(1) |> eof_newline(),
-      source |> code() |> eof_newline(),
+      source |> content(1) |> eof_newline(),
+      source |> content() |> eof_newline(),
       opts
     )
   end
@@ -776,88 +785,140 @@ defmodule Rewrite.Source do
       iex> Source.hash(source)
       <<76, 24, 5, 252, 117, 230, 0, 217, 129, 150, 68, 248, 6, 48, 72, 46>>
   '''
-  @spec hash(Source.t()) :: binary()
-  def hash(%Source{path: path, code: code}), do: hash(path, code)
+  @spec hash(t()) :: binary()
+  def hash(%Source{path: path, content: content}), do: hash(path, content)
 
-  defp get_modules(code) when is_binary(code) do
-    code
-    |> Sourceror.parse_string!()
-    |> get_modules()
+  @doc """
+  Sets the `filetype` for the `source`.
+  """
+  @spec filetype(t(), filetype()) :: t()
+  def filetype(%Source{} = source, filetype), do: %Source{source | filetype: filetype}
+
+  @doc """
+  Gets the value for a specific `key` in `source` or `source.filetype`.
+
+  If the key is `:content` or `:path` the value comes directly form `source`
+  other keys are applied with `source.filetype`.
+  """
+  @spec get(t(), key()) :: value()
+  def get(%Source{} = source, key) when key in [:content, :path] do
+    Map.get(source, key)
   end
 
-  defp get_modules(code) do
-    code
-    |> Zipper.zip()
-    |> Zipper.traverse([], fn
-      {{:defmodule, _meta, [module | _args]}, _zipper_meta} = zipper, acc ->
-        {zipper, [concat(module) | acc]}
-
-      zipper, acc ->
-        {zipper, acc}
-    end)
-    |> elem(1)
-    |> Enum.uniq()
-    |> Enum.filter(&is_atom/1)
+  def get(%Source{filetype: filetype}, key) when not is_nil(filetype) do
+    Map.get(filetype, key)
   end
 
-  defp format(ast, file \\ nil, formatter_opts \\ nil) do
-    file = file || "source.ex"
+  @doc """
+  Fetches the value for a specific `key` in `source` or `source.filetype`.
 
-    formatter_opts =
-      if is_nil(formatter_opts) do
-        {_formatter, formatter_opts} = Format.formatter_for_file(file)
-        formatter_opts
-      else
-        formatter_opts
-      end
-
-    ext = Path.extname(file)
-    plugins = plugins_for_ext(formatter_opts, ext)
-
-    {quoted_to_algebra, plugins} =
-      case plugins do
-        [FreedomFormatter | plugins] ->
-          # For now just a workaround to support the FreedomFormatter.
-          {&FreedomFormatter.Formatter.to_algebra/2, plugins}
-
-        plugins ->
-          {&Code.quoted_to_algebra/2, plugins}
-      end
-
-    formatter_opts =
-      formatter_opts ++
-        [
-          quoted_to_algebra: quoted_to_algebra,
-          extension: ext,
-          file: file
-        ]
-
-    code = Sourceror.to_string(ast, formatter_opts)
-
-    Enum.reduce(plugins, code, fn plugin, code ->
-      plugin.format(code, formatter_opts)
-    end)
+  If the key is `:content` or `:path` the value comes directly form `source`
+  other keys are applied with `source.filetype`.
+  """
+  @spec fetch(t(), key()) :: {:ok, value()} | :error
+  def fetch(%Source{} = source, key) when key in [:content, :path] do
+    Map.fetch(source, key)
   end
 
-  defp plugins_for_ext(formatter_opts, ext) do
-    formatter_opts
-    |> Keyword.get(:plugins, [])
-    |> Enum.filter(fn plugin ->
-      Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
-        ext in List.wrap(plugin.features(formatter_opts)[:extensions])
-    end)
+  def fetch(%Source{filetype: filetype}, key) when not is_nil(filetype) do
+    Map.fetch(filetype, key)
   end
 
-  defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
+  @doc """
+  Fetches the value for a specific `key` in `source` or `source.filetype`,
+  erroring out if `source` or `source.filetype` doesn't contain key.
 
-  defp concat(ast), do: ast
+  If the key is `:content` or `:path` the value comes directly form `source`
+  other keys are applied with `source.filetype`.
+  """
+  @spec fetch!(t(), key()) :: {:ok, value()} | :error
+  def fetch!(%Source{} = source, key) when key in [:content, :path] do
+    Map.fetch(source, key)
+  end
+
+  def fetch!(%Source{filetype: filetype}, key) when not is_nil(filetype) do
+    Map.fetch(filetype, key)
+  end
+
+  # defp get_modules(code) when is_binary(code) do
+  #   code
+  #   |> Sourceror.parse_string!()
+  #   |> get_modules()
+  # end
+
+  # defp get_modules(code) do
+  #   code
+  #   |> Zipper.zip()
+  #   |> Zipper.traverse([], fn
+  #     {{:defmodule, _meta, [module | _args]}, _zipper_meta} = zipper, acc ->
+  #       {zipper, [concat(module) | acc]}
+
+  #     zipper, acc ->
+  #       {zipper, acc}
+  #   end)
+  #   |> elem(1)
+  #   |> Enum.uniq()
+  #   |> Enum.filter(&is_atom/1)
+  # end
+
+  # defp format(ast, file \\ nil, formatter_opts \\ nil) do
+  #   file = file || "source.ex"
+
+  #   formatter_opts =
+  #     if is_nil(formatter_opts) do
+  #       {_formatter, formatter_opts} = Format.formatter_for_file(file)
+  #       formatter_opts
+  #     else
+  #       formatter_opts
+  #     end
+
+  #   ext = Path.extname(file)
+  #   plugins = plugins_for_ext(formatter_opts, ext)
+
+  #   {quoted_to_algebra, plugins} =
+  #     case plugins do
+  #       [FreedomFormatter | plugins] ->
+  #         # For now just a workaround to support the FreedomFormatter.
+  #         {&FreedomFormatter.Formatter.to_algebra/2, plugins}
+
+  #       plugins ->
+  #         {&Code.quoted_to_algebra/2, plugins}
+  #     end
+
+  #   formatter_opts =
+  #     formatter_opts ++
+  #       [
+  #         quoted_to_algebra: quoted_to_algebra,
+  #         extension: ext,
+  #         file: file
+  #       ]
+
+  #   code = Sourceror.to_string(ast, formatter_opts)
+
+  #   Enum.reduce(plugins, code, fn plugin, code ->
+  #     plugin.format(code, formatter_opts)
+  #   end)
+  # end
+
+  # defp plugins_for_ext(formatter_opts, ext) do
+  #   formatter_opts
+  #   |> Keyword.get(:plugins, [])
+  #   |> Enum.filter(fn plugin ->
+  #     Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
+  #       ext in List.wrap(plugin.features(formatter_opts)[:extensions])
+  #   end)
+  # end
+
+  # defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
+
+  # defp concat(ast), do: ast
 
   defp hash(nil, code), do: :crypto.hash(:md5, code)
 
   defp hash(path, code), do: :crypto.hash(:md5, path <> code)
 
-  defp update_updates(%Source{updates: updates} = source, update) do
-    %{source | updates: [update | updates]}
+  defp update_updates(%Source{updates: updates} = source, key, by, legacy) do
+    %{source | updates: [{key, by, legacy} | updates]}
   end
 
   defp not_empty?(enum), do: not Enum.empty?(enum)

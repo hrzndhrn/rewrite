@@ -10,7 +10,7 @@ defmodule Rewrite do
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
 
-  defstruct sources: %{}
+  defstruct sources: %{}, extensions: %{}
 
   @type t :: %Rewrite{sources: %{Path.t() => Source.t()}}
   @type input :: Path.t() | wildcard() | GlobEx.t()
@@ -25,23 +25,45 @@ defmodule Rewrite do
       iex> Rewrite.new()
       %Rewrite{sources: %{}}
   """
-  @spec new :: t()
-  def new, do: %Rewrite{}
+  @spec new([module()]) :: t()
+  def new(filetypes \\ [Source.Ex]) do
+    %Rewrite{extensions: extensions(filetypes)}
+  end
+
+  defp extensions(modules) do
+    modules
+    |> Enum.flat_map(fn module ->
+      IO.inspect(module)
+      module.extensions()
+      |> List.wrap()
+      |> Enum.map(fn extension -> {extension, module} end)
+    end)
+    |> Map.new()
+  end
+
+  defp read_source!(path, extensions) when not is_nil(path) do
+    ext = Path.extname(path)
+    source = Map.get(extensions, ext, Source)
+
+    source.read!(path)
+  end
 
   @doc """
   Creates a `%Rewrite{}` from the given `inputs`.
   """
-  @spec read!(input() | [input()]) :: t()
-  def read!(inputs) do
+  @spec new!(input() | [input()], [module]) :: t()
+  def new!(inputs, filetypes \\ [Source.Ex]) do
+    extensions = extensions(filetypes)
+
     sources =
       inputs
       |> expand()
       |> Enum.reduce(%{}, fn path, sources ->
-        source = Source.read!(path)
+        source = read_source!(path, extensions)
         Map.put(sources, source.path, source)
       end)
 
-    struct!(Rewrite, sources: sources)
+    struct!(Rewrite, sources: sources, extensions: extensions)
   end
 
   @doc """
@@ -54,22 +76,22 @@ defmodule Rewrite do
     `force: true` updates and issues for an already existing source are deleted.
   """
   @spec read!(t(), input() | [input()], opts()) :: t()
-  def read!(%Rewrite{sources: sources} = project, inputs, opts \\ []) do
+  def read!(%Rewrite{} = rewrite, inputs, opts \\ []) do
     force = Keyword.get(opts, :force, false)
 
     sources =
       inputs
       |> expand()
-      |> Enum.reduce(sources, fn path, sources ->
+      |> Enum.reduce(rewrite.sources, fn path, sources ->
         if !force && Map.has_key?(sources, path) do
           sources
         else
-          source = Source.read!(path)
+          source = read_source!(path, rewrite.extensions)
           Map.put(sources, source.path, source)
         end
       end)
 
-    %{project | sources: sources}
+    %{rewrite | sources: sources}
   end
 
   @doc """

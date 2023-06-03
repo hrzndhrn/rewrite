@@ -5,7 +5,7 @@ defmodule Rewrite.UpdateError do
 
   alias Rewrite.UpdateError
 
-  @type reason :: :nopath | :overwrites
+  @type reason :: :nopath | :overwrites | :filetype
 
   @type t :: %UpdateError{
           reason: reason,
