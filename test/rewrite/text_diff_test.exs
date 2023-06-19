@@ -318,21 +318,52 @@ defmodule Rewrite.TextDiffTest do
     test "shows multiple added CRs" do
       old = """
       aaa
-      bbb
+      b
+      cccccc
       """
 
       new = """
       aaa\r
       bbb\r
       ccc\r
+      ddd\r
       """
 
       exp = """
       1   - |aaa
-      2   - |bbb
+      2   - |b
+      3   - |cccccc
         1 + |aaa↵
         2 + |bbb↵
-        3 + |ccc\r
+        3 + |ccc↵
+        4 + |ddd\r
+      """
+
+      assert TextDiff.format(old, new)
+
+      assert to_binary(old, new, color: false, before: 1, after: 1)  == exp
+    end
+
+    test "shows CR only when changed" do
+      old = """
+      aaa\r
+      bbb\r
+      ccc
+      """
+
+      new = """
+      axa\r
+      bxb
+      cxc
+      """
+
+      exp = """
+      1   - |aaa\r
+      2   - |bbb↵
+      3   - |ccc
+        1 + |axa\r
+        2 + |bxb
+        3 + |cxc
       """
 
       assert TextDiff.format(old, new)
@@ -361,6 +392,27 @@ defmodule Rewrite.TextDiffTest do
       assert TextDiff.format(old, new)
 
       assert to_binary(old, new, color: false, before: 1, after: 1) == exp
+    end
+
+    test "shows deleted CR in a shorten text" do
+      old = """
+      aaa\r
+      bbb
+      """
+
+      new = """
+      aaa
+      """
+
+      exp = """
+      1   - |aaa↵
+      2   - |bbb
+        1 + |aaa
+      """
+
+      assert TextDiff.format(old, new)
+
+      assert to_binary(old, new, color: false, before: 1, after: 1)  == exp
     end
 
     test "shows multiple deleted CRs" do

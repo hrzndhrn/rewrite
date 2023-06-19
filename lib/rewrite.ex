@@ -641,7 +641,6 @@ defmodule Rewrite do
 
       {:ok, length,
        fn
-         _start, 0 -> []
          start, count when start + count == length -> Enum.drop(sources, start)
          start, count -> sources |> Enum.drop(start) |> Enum.take(count)
        end}
