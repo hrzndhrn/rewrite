@@ -44,6 +44,7 @@ defmodule FreedomFormatter do
       #   1,
       # ]
       # ```
+      IO.puts("FreedomFormatter.Formatter.to_algebra/2")
       {:doc_group,
        {:doc_group,
         {:doc_cons,

@@ -26,8 +26,8 @@ defmodule Rewrite.Filetype do
   @callback read!(Path.t()) :: Source.t()
   @callback read!(Path.t(), opts()) :: Source.t()
 
-  @callback update(Source.t(), key()) :: :ok | {:ok, t()} | :error
-  @callback update(Source.t(), key(), value()) :: :ok | {:ok, updates()} | :error
+  @callback handle_update(Source.t(), key()) :: :ok | {:ok, t()} | :error
+  @callback handle_update(Source.t(), key(), value()) :: :ok | {:ok, updates()} | :error
 
   @callback extensions :: [extension] | :any
 end

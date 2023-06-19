@@ -11,12 +11,22 @@ defmodule Rewrite.Source.Ex do
   alias Sourceror.Zipper
 
   # TODO: save formatter in struct
+  @enforce_keys [:quoted, :formatter]
   defstruct [:quoted, :formatter]
+
+  @type t :: %Ex{
+          quoted: Macro.t(),
+          formatter: (Macro.t() -> String.t())
+        }
 
   @behaviour Rewrite.Filetype
 
   defp new(source) do
-    ex = struct!(Ex, quoted: Sourceror.parse_string!(source.content))
+    ex =
+      struct!(Ex,
+        quoted: Sourceror.parse_string!(source.content),
+        formatter: formatter(source.path, nil)
+      )
 
     Source.filetype(source, ex)
   end
@@ -42,42 +52,193 @@ defmodule Rewrite.Source.Ex do
   end
 
   @impl Rewrite.Filetype
-  def update(%Source{}, :path), do: :ok
+  def handle_update(%Source{filetype: ex} = source, :path) do
+    {:ok, %Ex{ex | formatter: formatter(source.path, nil)}}
+  end
 
-  def update(%Source{filetype: %Ex{} = ex} = source, :content) do
+  def handle_update(%Source{filetype: %Ex{} = ex} = source, :content) do
     quoted = Sourceror.parse_string!(source.content)
 
     {:ok, %Ex{ex | quoted: quoted}}
   end
 
   @impl Rewrite.Filetype
-  def update(%Source{filetype: %Ex{} = ex} = source, :quoted, quoted) do
+  def handle_update(%Source{filetype: ex}, :quoted, quoted) do
     if ex.quoted == quoted do
       :ok
     else
-      code = format(quoted, source.path, Map.get(source.private, :dot_formatter_opts))
+      code = ex.formatter.(quoted)
 
       {:ok, content: code, filetype: %Ex{ex | quoted: quoted}}
     end
   end
 
+  @doc """
+  Returns the current modules for the given `source`.
+  """
+  @spec modules(Source.t()) :: [module()]
   def modules(%Source{filetype: %Ex{} = ex}) do
     get_modules(ex.quoted)
   end
 
-  # TODO: add modules/2
+  @doc ~S'''
+  Returns the modules of a `source` for the given `version`.
 
+  ## Examples
+
+      iex> bar =
+      ...>   """
+      ...>   defmodule Bar do
+      ...>      def bar, do: :bar
+      ...>   end
+      ...>   """
+      iex> foo =
+      ...>   """
+      ...>   defmodule Baz.Foo do
+      ...>      def foo, do: :foo
+      ...>   end
+      ...>   """
+      iex> source = Source.Ex.from_string(bar)
+      iex> source = Source.update(source, :content, bar <> foo)
+      iex> Source.Ex.modules(source)
+      [Baz.Foo, Bar]
+      iex> Source.Ex.modules(source, 2)
+      [Baz.Foo, Bar]
+      iex> Source.Ex.modules(source, 1)
+      [Bar]
+  '''
+  @spec modules(Source.t(), Source.version()) :: [module()]
+  def modules(%Source{filetype: %Ex{}, history: history} = source, version)
+      when version >= 1 and version <= length(history) + 1 do
+    source |> Source.content(version) |> Sourceror.parse_string!() |> get_modules()
+  end
+
+  @doc """
+  Returns the current quoted expression from the `source`.
+
+  ## Examples
+
+      iex> source = Source.Ex.from_string("1 + 1")
+      iex> Source.Ex.quoted(source)
+      {:+, [trailing_comments: [], line: 1, column: 3],
+       [
+         {
+           :__block__,
+           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 1],
+           [1]
+         },
+         {
+           :__block__,
+           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 5],
+           [1]
+         }
+       ]}
+  """
+  @spec quoted(Source.t()) :: Macro.t()
   def quoted(%Source{filetype: %Ex{} = ex}) do
     ex.quoted
   end
 
-  # TODO: add quoted/2
+  @doc """
+  Retruns the quoted expression for the given `version`.
+  ## Examples
 
-  def format(quoted) do
-    format(quoted, nil, nil)
+      iex> source = Source.Ex.from_string("1 + 1")
+      iex> source = Source.update(source, :content, "2 * 2")
+      iex> Source.Ex.quoted(source, 1)
+      {:+, [trailing_comments: [], line: 1, column: 3],
+       [
+         {
+           :__block__,
+           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 1],
+           [1]
+         },
+         {
+           :__block__,
+           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 5],
+           [1]
+         }
+       ]}
+      iex> Source.Ex.quoted(source, 2)
+      {:*, [trailing_comments: [], line: 1, column: 3],
+       [
+         {
+           :__block__,
+           [trailing_comments: [], leading_comments: [], token: "2", line: 1, column: 1],
+           [2]
+         },
+         {
+           :__block__,
+           [trailing_comments: [], leading_comments: [], token: "2", line: 1, column: 5],
+           [2]
+         }
+       ]}
+  """
+  @spec quoted(Source.t(), Source.version()) :: Macro.t()
+  def quoted(%Source{filetype: %Ex{}, history: history} = source, version)
+      when version >= 1 and version <= length(history) + 1 do
+    source |> Source.content(version) |> Sourceror.parse_string!()
   end
 
-  defp format(ast, file, formatter_opts) do
+  @doc ~S'''
+  Formats the given `source`, `code` or `quoted`.
+
+  Returns an updated `source` when input is a `source`.
+
+      iex> code = """
+      ...> defmodule    Foo do
+      ...>     def   foo,   do:    :foo
+      ...>    end
+      ...> """
+      iex> Source.Ex.format(code)
+      """
+      defmodule Foo do
+        def foo, do: :foo
+      end\
+      """
+      iex> Source.Ex.format(code, force_do_end_blocks: true)
+      """
+      defmodule Foo do
+        def foo do
+          :foo
+        end
+      end\
+      """
+
+      iex> source = Source.Ex.from_string("""
+      ...> defmodule    Foo do
+      ...>     def   foo,   do:    :foo
+      ...>    end
+      ...> """)
+      iex> source = Source.Ex.format(source, force_do_end_blocks: true)
+      iex> Source.content(source)
+      """
+      defmodule Foo do
+        def foo do
+          :foo
+        end
+      end\
+      """
+      iex> Source.Ex.quoted(source, 1) != Source.Ex.quoted(source, 2)
+      true
+  '''
+  @spec format(Source.t({} | String.t() | Macro.t(), formatter_opts :: keyword())) ::
+          Source.t() | String.t()
+  def format(input, formatter_opts \\ [])
+
+  def format(%Source{filetype: %Ex{} = ex} = source, formatter_opts) do
+    Source.update(source, :content, format(ex.quoted, formatter_opts))
+  end
+
+  def format(input, formatter_opts) when is_binary(input) do
+    input |> Sourceror.parse_string!() |> format(formatter_opts)
+  end
+
+  def format(input, formatter_opts) do
+    formatter(nil, formatter_opts).(input)
+  end
+
+  defp formatter(file, formatter_opts) do
     file = file || "source.ex"
 
     formatter_opts =
@@ -109,11 +270,13 @@ defmodule Rewrite.Source.Ex do
           file: file
         ]
 
-    code = Sourceror.to_string(ast, formatter_opts)
+    fn quoted ->
+      code = Sourceror.to_string(quoted, formatter_opts)
 
-    Enum.reduce(plugins, code, fn plugin, code ->
-      plugin.format(code, formatter_opts)
-    end)
+      Enum.reduce(plugins, code, fn plugin, code ->
+        plugin.format(code, formatter_opts)
+      end)
+    end
   end
 
   defp plugins_for_ext(formatter_opts, ext) do
@@ -123,12 +286,6 @@ defmodule Rewrite.Source.Ex do
       Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
         ext in List.wrap(plugin.features(formatter_opts)[:extensions])
     end)
-  end
-
-  defp get_modules(code) when is_binary(code) do
-    code
-    |> Sourceror.parse_string!()
-    |> get_modules()
   end
 
   defp get_modules(code) do
@@ -147,6 +304,4 @@ defmodule Rewrite.Source.Ex do
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
-
-  defp concat(ast), do: ast
 end

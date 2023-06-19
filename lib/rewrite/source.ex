@@ -35,10 +35,8 @@ defmodule Rewrite.Source do
   """
   @type version :: pos_integer()
 
-  # TODO: ???
-  @type kind :: :code | :path
+  @type kind :: :content | :path
 
-  # TODO by and owner or just one of this
   @type by :: module()
   @type owner :: module()
 
@@ -54,6 +52,7 @@ defmodule Rewrite.Source do
 
   @type filetype :: %{}
 
+  # TODO: t/1
   @type t :: %Source{
           path: Path.t() | nil,
           content: String.t(),
@@ -374,7 +373,7 @@ defmodule Rewrite.Source do
   end
 
   def update(%Source{filetype: %module{}} = source, by, key, value) do
-    case module.update(source, key, value) do
+    case module.handle_update(source, key, value) do
       :ok ->
         source
 
@@ -408,7 +407,7 @@ defmodule Rewrite.Source do
   defp update_filetype(%{filtetype: nil} = source, _filtetype), do: source
 
   defp update_filetype(%{filetype: %module{}} = source, key) when is_atom(key) do
-    case module.update(source, key) do
+    case module.handle_update(source, key) do
       :ok ->
         source
 
