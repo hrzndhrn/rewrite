@@ -471,7 +471,7 @@ defmodule Rewrite.TextDiff do
   end
 
   defp insert_cr_symbol(left, right) do
-    case {String.ends_with?(left, "\r"), String.ends_with?(right, "\r")}  do
+    case {String.ends_with?(left, "\r"), String.ends_with?(right, "\r")} do
       {bool, bool} -> {left, right}
       {true, false} -> {String.replace(left, "\r", @cr), right}
       {false, true} -> {left, String.replace(right, "\r", @cr)}

@@ -341,7 +341,7 @@ defmodule Rewrite.TextDiffTest do
 
       assert TextDiff.format(old, new)
 
-      assert to_binary(old, new, color: false, before: 1, after: 1)  == exp
+      assert to_binary(old, new, color: false, before: 1, after: 1) == exp
     end
 
     test "shows CR only when changed" do
@@ -412,7 +412,7 @@ defmodule Rewrite.TextDiffTest do
 
       assert TextDiff.format(old, new)
 
-      assert to_binary(old, new, color: false, before: 1, after: 1)  == exp
+      assert to_binary(old, new, color: false, before: 1, after: 1) == exp
     end
 
     test "shows multiple deleted CRs" do

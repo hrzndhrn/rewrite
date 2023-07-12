@@ -32,7 +32,7 @@ defmodule Rewrite do
       }
   """
   @spec new([module()]) :: t()
-  def new(filetypes \\ [Source.Ex]) do
+  def new(filetypes \\ [Source.Ex]) when is_list(filetypes) do
     %Rewrite{extensions: extensions(filetypes)}
   end
 
@@ -243,7 +243,7 @@ defmodule Rewrite do
   Returns `{:error, error}` for sources with a missing path and/or duplicated
   paths.
   """
-  @spec from_sources([Source.t()], [module()]) :: {:ok, Rewrite.t()} | {:error, Error.t()}
+  @spec from_sources([Source.t()], [module()]) :: {:ok, t()} | {:error, Error.t()}
   def from_sources(sources, filetypes \\ [Source.Ex]) when is_list(sources) do
     {sources, missing, duplicated} =
       Enum.reduce(sources, {%{}, [], []}, fn %Source{} = source, {sources, missing, duplicated} ->
@@ -268,6 +268,18 @@ defmodule Rewrite do
          missing_paths: missing,
          duplicated_paths: duplicated
        )}
+    end
+  end
+
+  @doc """
+  Same as `from_sources/2`, but raises a `Rewrite.Error` exception in case of
+  failure.
+  """
+  @spec from_sources!([Source.t()], [module()]) :: t()
+  def from_sources!(sources, filetypes \\ [Source.Ex]) when is_list(sources) do
+    case from_sources(sources, filetypes) do
+      {:ok, rewrite} -> rewrite
+      {:error, error} -> raise error
     end
   end
 
@@ -467,7 +479,7 @@ defmodule Rewrite do
   Counts the sources with the given `extname` in the `project`.
   """
   @spec count(t, String.t()) :: non_neg_integer
-  def count(%Rewrite{sources: sources}, extname) do
+  def count(%Rewrite{sources: sources}, extname) when is_binary(extname) do
     sources
     |> Map.keys()
     |> Enum.count(fn path -> Path.extname(path) == extname end)

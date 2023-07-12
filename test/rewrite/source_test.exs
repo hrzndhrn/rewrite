@@ -208,7 +208,7 @@ defmodule Rewrite.SourceTest do
     end
   end
 
-  describe "update/3" do
+  describe "update/4" do
     test "does not update source when code not changed" do
       source = Source.read!("test/fixtures/source/hello.txt")
       updated = Source.update(source, Test, :content, source.content)
@@ -216,7 +216,7 @@ defmodule Rewrite.SourceTest do
       assert Source.updated?(updated) == false
     end
 
-    test "updates the code" do
+    test "updates the content" do
       path = "test/fixtures/source/hello.txt"
       txt = File.read!(path)
       new = "bye"
@@ -230,73 +230,38 @@ defmodule Rewrite.SourceTest do
       assert source.content == new
     end
 
-    # TODO: this test goes to source/ex_test.exs
-    # test "updates the code with an AST" do
-    #   path = "test/fixtures/source/simple.ex"
-    #   code = File.read!(path)
-    #   changes = code |> String.replace("MyApp", "TheApp") |> String.trim_trailing()
-    #   zipper = changes |> Sourceror.parse_string!() |> Zipper.zip()
+    test "updates the path" do
+      path = "test/fixtures/source/hello.txt"
+      new = "test/fixtures/source/bye.txt"
 
-    #   source =
-    #     path
-    #     |> Source.read!()
-    #     |> Source.update(:test, ast: Zipper.root(zipper))
+      source =
+        path
+        |> Source.read!()
+        |> Source.update(:path, new)
 
-    #   assert_source(source, %{
-    #     path: path,
-    #     code: changes,
-    #     modules: [TheApp.Simple],
-    #     updates: [{:code, :test, code}],
-    #     ast: Sourceror.parse_string!(changes)
-    #   })
-    # end
+      assert source.history == [{:path, Rewrite, path}]
+      assert source.path == new
+    end
 
-    #     test "updates the code twice" do
-    #       path = "test/fixtures/source/simple.ex"
-    #       code = File.read!(path)
-    #       changes1 = String.replace(code, "MyApp", "TheApp")
-    #       changes2 = String.replace(changes1, "TheApp", "Application")
+    test "updates with filetype value" do
+      source = Source.Ex.from_string(":a", "test/a.ex")
+      quoted = Sourceror.parse_string!(":b")
 
-    #       orig = Source.read!(path)
+      assert source = Source.update(source, :quoted, quoted)
+      assert source.filetype != nil
+      assert Source.content(source) == ":b"
+      assert Source.updated?(source) == true
+    end
 
-    #       source =
-    #         orig
-    #         |> Source.update(:foo, code: changes1)
-    #         |> Source.update(:bar, code: changes2)
+    test "does not update with filetype value without any changes" do
+      source = Source.Ex.from_string(":a", "test/a.ex")
+      quoted = Sourceror.parse_string!(":a")
 
-    #       assert_source(source, %{
-    #         path: path,
-    #         code: changes2,
-    #         modules: [Application.Simple],
-    #         updates: [
-    #           {:code, :bar, changes1},
-    #           {:code, :foo, code}
-    #         ]
-    #       })
-    #     end
-
-    #     test "updates the code and path" do
-    #       path = "test/fixtures/source/simple.ex"
-    #       code = File.read!(path)
-    #       changes1 = String.replace(code, "MyApp", "TheApp")
-    #       changes2 = "test/fixtures/source/the_app.ex"
-
-    #       source =
-    #         path
-    #         |> Source.read!()
-    #         |> Source.update(:foo, code: changes1)
-    #         |> Source.update(:bar, path: changes2)
-
-    #       assert_source(source, %{
-    #         path: changes2,
-    #         code: changes1,
-    #         modules: [TheApp.Simple],
-    #         updates: [
-    #           {:path, :bar, path},
-    #           {:code, :foo, code}
-    #         ]
-    #       })
-    #     end
+      assert source = Source.update(source, :quoted, quoted)
+      assert source.filetype != nil
+      assert Source.content(source) == ":a"
+      assert Source.updated?(source) == false
+    end
   end
 
   describe "path/1" do
@@ -387,5 +352,47 @@ defmodule Rewrite.SourceTest do
       assert source = Source.put_private(source, :any_key, :any_value)
       assert source.private[:any_key] == :any_value
     end
+  end
+
+  describe "undo/2" do
+    test "returns unchanged source when source not updated" do
+      source = Source.from_string("test")
+
+      assert Source.undo(source) == source
+      assert Source.undo(source, 5) == source
+    end
+
+    test "returns first source when source was updated once" do
+      source = Source.from_string("test")
+      updated = Source.update(source, :content, "changed")
+      undo = Source.undo(updated)
+
+      assert undo == source
+      assert Source.updated?(undo) == false
+    end
+
+    test "returns previous source" do
+      a = Source.from_string("test-a")
+      b = Source.update(a, :content, "test-b")
+      c = Source.update(b, :path, "test/foo.txt")
+      d = Source.update(c, :content, "test-d")
+
+      assert Source.undo(d) == c
+      assert Source.undo(d, 2) == b
+      assert Source.undo(d, 3) == a
+      assert Source.undo(d, 9) == a
+    end
+
+    test "returns previous Elixir source" do
+      a = Source.Ex.from_string(":a")
+      b = Source.update(a, :content, ":b")
+      c = Source.update(b, :path, "test/foo.txt")
+      d = Source.update(c, :content, ":d")
+
+      assert Source.undo(d) == c
+      assert Source.undo(d, 2) == b
+      assert Source.undo(d, 3) == a
+      assert Source.undo(d, 9) == a
+      end
   end
 end

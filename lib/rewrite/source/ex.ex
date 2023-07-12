@@ -10,7 +10,6 @@ defmodule Rewrite.Source.Ex do
   alias Rewrite.Source.Ex
   alias Sourceror.Zipper
 
-  # TODO: save formatter in struct
   @enforce_keys [:quoted, :formatter]
   defstruct [:quoted, :formatter]
 
@@ -21,16 +20,6 @@ defmodule Rewrite.Source.Ex do
 
   @behaviour Rewrite.Filetype
 
-  defp new(source) do
-    ex =
-      struct!(Ex,
-        quoted: Sourceror.parse_string!(source.content),
-        formatter: formatter(source.path, nil)
-      )
-
-    Source.filetype(source, ex)
-  end
-
   @impl Rewrite.Filetype
   def extensions, do: [".ex", ".exs"]
 
@@ -38,40 +27,38 @@ defmodule Rewrite.Source.Ex do
   def from_string(string, path \\ nil, _opts \\ []) do
     string
     |> Source.from_string(path)
-    |> new()
+    |> add_filetype()
   end
 
-  @doc """
-  imple
-  """
   @impl Rewrite.Filetype
   def read!(path, _opts \\ []) do
     path
     |> Source.read!()
-    |> new()
+    |> add_filetype()
   end
 
   @impl Rewrite.Filetype
-  def handle_update(%Source{filetype: ex} = source, :path) do
-    {:ok, %Ex{ex | formatter: formatter(source.path, nil)}}
+  def handle_update(%Source{filetype: %Ex{} = ex} = source, :path) do
+    %Ex{ex | formatter: formatter(source.path, nil)}
   end
 
   def handle_update(%Source{filetype: %Ex{} = ex} = source, :content) do
-    quoted = Sourceror.parse_string!(source.content)
-
-    {:ok, %Ex{ex | quoted: quoted}}
+    %Ex{ex | quoted: Sourceror.parse_string!(source.content)}
   end
 
   @impl Rewrite.Filetype
-  def handle_update(%Source{filetype: ex}, :quoted, quoted) do
+  def handle_update(%Source{filetype: %Ex{} = ex}, :quoted, quoted) do
     if ex.quoted == quoted do
-      :ok
+      []
     else
       code = ex.formatter.(quoted)
 
-      {:ok, content: code, filetype: %Ex{ex | quoted: quoted}}
+      [content: code, filetype: %Ex{ex | quoted: quoted}]
     end
   end
+
+  @impl Rewrite.Filetype
+  def undo(%Source{} = source), do: add_filetype(source)
 
   @doc """
   Returns the current modules for the given `source`.
@@ -222,7 +209,7 @@ defmodule Rewrite.Source.Ex do
       iex> Source.Ex.quoted(source, 1) != Source.Ex.quoted(source, 2)
       true
   '''
-  @spec format(Source.t({} | String.t() | Macro.t(), formatter_opts :: keyword())) ::
+  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword()) ::
           Source.t() | String.t()
   def format(input, formatter_opts \\ [])
 
@@ -236,6 +223,16 @@ defmodule Rewrite.Source.Ex do
 
   def format(input, formatter_opts) do
     formatter(nil, formatter_opts).(input)
+  end
+
+  defp add_filetype(source) do
+    ex =
+      struct!(Ex,
+        quoted: Sourceror.parse_string!(source.content),
+        formatter: formatter(source.path, nil)
+      )
+
+    Source.filetype(source, ex)
   end
 
   defp formatter(file, formatter_opts) do

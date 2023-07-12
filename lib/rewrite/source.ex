@@ -13,7 +13,6 @@ defmodule Rewrite.Source do
   alias Rewrite.TextDiff
 
   alias Rewrite.SourceError
-  alias Rewrite.UpdateError
 
   defstruct [
     :from,
@@ -46,13 +45,12 @@ defmodule Rewrite.Source do
   @type content :: String.t()
   @type extension :: String.t()
 
-  @type from :: :file | :ast | :string
+  @type from :: :file | :string
 
   @type issue :: any()
 
-  @type filetype :: %{}
+  @type filetype :: map()
 
-  # TODO: t/1
   @type t :: %Source{
           path: Path.t() | nil,
           content: String.t(),
@@ -372,25 +370,20 @@ defmodule Rewrite.Source do
     end
   end
 
-  def update(%Source{filetype: %module{}} = source, by, key, value) do
-    case module.handle_update(source, key, value) do
-      :ok ->
+  def update(%Source{filetype: %module{}} = source, by, key, value) when is_atom(key) do
+    updates = module.handle_update(source, key, value)
+
+    case updates do
+      [] ->
         source
 
-      {:ok, updates} ->
-        source
-        |> update_filetype(updates[:filetype])
-        |> update_content(updates[:content], by)
+      updates ->
+        filetype = Keyword.get(updates, :filetype, source.filetype)
+        content = Keyword.get(updates, :content, source.content)
 
-      :error ->
-        {:error,
-         UpdateError.exception(
-           reason: :filetype,
-           source: source.path,
-           filetype: module,
-           key: key,
-           value: value
-         )}
+        source
+        |> Map.put(:filetype, filetype)
+        |> update_content(content, by)
     end
   end
 
@@ -402,31 +395,11 @@ defmodule Rewrite.Source do
     %Source{source | content: content}
   end
 
-  defp update_filetype(source, nil), do: source
-
-  defp update_filetype(%{filtetype: nil} = source, _filtetype), do: source
+  defp update_filetype(%{filetype: nil} = source, _key), do: source
 
   defp update_filetype(%{filetype: %module{}} = source, key) when is_atom(key) do
-    case module.handle_update(source, key) do
-      :ok ->
-        source
+    filetype = module.handle_update(source, key)
 
-      {:ok, filetype} ->
-        update_filetype(source, filetype)
-
-      :error ->
-        {:error,
-         UpdateError.exception(
-           reason: :filetype,
-           source: source.path,
-           filetype: module,
-           key: key,
-           value: Map.fetch(source, key)
-         )}
-    end
-  end
-
-  defp update_filetype(source, filetype) do
     %Source{source | filetype: filetype}
   end
 
@@ -435,11 +408,6 @@ defmodule Rewrite.Source do
   defp update_content(source, content, by) do
     update(source, by, :content, content)
   end
-
-  # defp update_modules(source, key) when key in [:ast, :code],
-  #   do: %{source | modules: get_modules(source.code)}
-
-  # defp update_modules(source, _key), do: source
 
   @doc """
   Returns `true` if the source was updated.
@@ -693,6 +661,62 @@ defmodule Rewrite.Source do
   """
   @spec filetype(t(), filetype()) :: t()
   def filetype(%Source{} = source, filetype), do: %Source{source | filetype: filetype}
+
+  @doc """
+  Returns true when `from` matches to value for key `:from`.
+
+  ## Examples
+
+      iex> source = Source.from_string("hello")
+      iex> Source.from?(source, :file)
+      false
+      iex> Source.from?(source, :string)
+      true
+  """
+  @spec from?(t(), :file | :string) :: boolean
+  def from?(%Source{from: value}, from) when from in [:file, :string], do: value == from
+
+  @doc """
+  Undoes the given `number` of changes.
+
+  ## Examples
+      iex> a = Source.from_string("test-a", "test/foo.txt")
+      iex> b = Source.update(a, :content, "test-b")
+      iex> c = Source.update(b, :path, "test/bar.txt")
+      iex> d = Source.update(c, :content, "test-d")
+      iex> d |> Source.undo() |> Source.content()
+      "test-b"
+      iex> d |> Source.undo(1) |> Source.content()
+      "test-b"
+      iex> d |> Source.undo(2) |> Source.path()
+      "test/foo.txt"
+      iex> d |> Source.undo(3) |> Source.content()
+      "test-a"
+      iex> d |> Source.undo(9) |> Source.content()
+      "test-a"
+      iex> d |> Source.undo(9) |> Source.updated?()
+      false
+      iex> d |> Source.undo(-9) |> Source.content()
+      "test-d"
+  """
+  @spec undo(t(), pos_integer()) :: t()
+  def undo(source, number \\ 1)
+
+  def undo(%Source{filetype: nil} = source, number) when number < 1, do: source
+
+  def undo(%Source{filetype: %module{}} = source, 0), do: module.undo(source)
+
+  def undo(%Source{history: []} = source, _number), do: undo(source, 0)
+
+  def undo(%Source{history: [undo | history]} = source, number) do
+    source =
+      case undo do
+        {:content, _by, content} -> %Source{source | history: history, content: content}
+        {:path, _by, path} -> %Source{source | history: history, path: path}
+      end
+
+    undo(source, number - 1)
+  end
 
   defp hash(nil, code), do: :crypto.hash(:md5, code)
 

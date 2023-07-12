@@ -16,7 +16,7 @@ defmodule Rewrite.Source.ExTest do
   end
 
   describe "handle_update/2" do
-    test "updateds quoted" do
+    test "updates quoted" do
       source = Source.Ex.from_string(":a", "a.exs")
       quoted = Sourceror.parse_string!(":x")
       source = Source.update(source, :quoted, quoted)
@@ -41,6 +41,15 @@ defmodule Rewrite.Source.ExTest do
 
       source = Source.update(source, :path, "x.exs")
       refute source.filetype.formatter == formatter
+    end
+
+    test "raises an error" do
+      source = Source.Ex.from_string(":a")
+      message = ~r/nofile:1:5: unexpected reserved word: end/
+
+      assert_raise SyntaxError, message, fn ->
+        Source.update(source, :content, ":ok end")
+      end
     end
   end
 
@@ -67,6 +76,14 @@ defmodule Rewrite.Source.ExTest do
              defmodule Foo do
              end\
              """
+    end
+
+    test "does not updates" do
+      code = ":a"
+      source = Source.Ex.from_string(code)
+      quoted = Sourceror.parse_string!(code)
+      assert source = Source.update(source, :quoted, quoted)
+      assert Source.updated?(source) == false
     end
   end
 
