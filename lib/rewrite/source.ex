@@ -699,7 +699,7 @@ defmodule Rewrite.Source do
       iex> d |> Source.undo(-9) |> Source.content()
       "test-d"
   """
-  @spec undo(t(), pos_integer()) :: t()
+  @spec undo(t(), non_neg_integer()) :: t()
   def undo(source, number \\ 1)
 
   def undo(%Source{filetype: nil} = source, number) when number < 1, do: source
