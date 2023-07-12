@@ -393,6 +393,6 @@ defmodule Rewrite.SourceTest do
       assert Source.undo(d, 2) == b
       assert Source.undo(d, 3) == a
       assert Source.undo(d, 9) == a
-      end
+    end
   end
 end
