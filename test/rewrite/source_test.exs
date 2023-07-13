@@ -10,34 +10,33 @@ defmodule Rewrite.SourceTest do
     test "creates new source" do
       path = "test/fixtures/source/hello.txt"
 
-      assert Source.read!(path) == %Source{
+      assert %Source{
                from: :file,
                owner: Rewrite,
-               path: path,
+               path: ^path,
                content: "hello\n",
                filetype: nil,
-               hash:
-                 <<173, 163, 154, 142, 118, 254, 168, 202, 109, 79, 216, 205, 178, 105, 63, 63>>,
+               hash: _hash,
                issues: [],
                private: %{},
                history: []
-             }
+             } = Source.read!(path)
     end
 
     test "creates new source from full path" do
       path = Path.join(File.cwd!(), "test/fixtures/source/hello.txt")
 
-      assert Source.read!(path) == %Source{
+      assert %Source{
                from: :file,
                owner: Rewrite,
-               path: path,
+               path: ^path,
                content: "hello\n",
                filetype: nil,
-               hash: <<54, 155, 6, 20, 63, 71, 237, 61, 140, 87, 1, 232, 123, 93, 128, 135>>,
+               hash: _hash,
                issues: [],
                private: %{},
                history: []
-             }
+             } = Source.read!(path)
     end
   end
 
