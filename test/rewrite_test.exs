@@ -206,6 +206,47 @@ defmodule RewriteTest do
     end
   end
 
+  describe "from_sources!/1" do
+    test "creates a project" do
+      assert Rewrite.from_sources!([
+               Source.from_string("b", "b.txt")
+             ]) ==
+               %Rewrite{
+                 extensions: %{".ex" => Rewrite.Source.Ex, ".exs" => Rewrite.Source.Ex},
+                 sources: %{
+                   "b.txt" => %Source{
+                     from: :string,
+                     path: "b.txt",
+                     content: "b",
+                     hash: <<174, 49, 163, 166, 58, 86, 116, 125, 28, 58, 67, 31, 0, 34, 7, 180>>,
+                     owner: Rewrite,
+                     history: [],
+                     issues: [],
+                     private: %{}
+                   }
+                 }
+               }
+    end
+
+    test "raises an error if path is missing" do
+      a = Source.from_string(":a", "a.exs")
+      b = Source.from_string(":b")
+
+      assert_raise Error, "invalid sources", fn ->
+        Rewrite.from_sources!([a, b])
+      end
+    end
+
+    test "raises an error if paths are duplicated" do
+      a = Source.from_string(":a", "a.exs")
+      b = Source.from_string(":b", "a.exs")
+
+      assert_raise Error, "invalid sources", fn ->
+        Rewrite.from_sources!([a, b])
+      end
+    end
+  end
+
   describe "source/2" do
     test "returns the source struct for a path" do
       path = "test/fixtures/source/simple.ex"
