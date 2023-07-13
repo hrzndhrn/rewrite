@@ -249,7 +249,7 @@ defmodule Rewrite.SourceTest do
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
-      assert Source.content(source) == ":b"
+      assert Source.content(source) == ":b\n"
       assert Source.updated?(source) == true
     end
 

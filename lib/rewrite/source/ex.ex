@@ -11,11 +11,12 @@ defmodule Rewrite.Source.Ex do
   alias Sourceror.Zipper
 
   @enforce_keys [:quoted, :formatter]
-  defstruct [:quoted, :formatter]
+  defstruct [:quoted, :formatter, :formatter_opts]
 
   @type t :: %Ex{
           quoted: Macro.t(),
-          formatter: (Macro.t() -> String.t())
+          formatter: (Macro.t() -> String.t()),
+          formatter_opts: nil | keyword()
         }
 
   @behaviour Rewrite.Filetype
@@ -51,14 +52,20 @@ defmodule Rewrite.Source.Ex do
     if ex.quoted == quoted do
       []
     else
-      code = ex.formatter.(quoted)
+      code = ex.formatter.(quoted, nil)
 
       [content: code, filetype: %Ex{ex | quoted: quoted}]
     end
   end
 
   @impl Rewrite.Filetype
-  def undo(%Source{} = source), do: add_filetype(source)
+  def undo(%Source{filetype: %Ex{} = ex} = source) do
+    Source.filetype(source, %Ex{
+      ex
+      | quoted: Sourceror.parse_string!(source.content),
+        formatter: formatter(source.path, nil)
+    })
+  end
 
   @doc """
   Returns the current modules for the given `source`.
@@ -181,7 +188,7 @@ defmodule Rewrite.Source.Ex do
       """
       defmodule Foo do
         def foo, do: :foo
-      end\
+      end
       """
       iex> Source.Ex.format(code, force_do_end_blocks: true)
       """
@@ -189,7 +196,7 @@ defmodule Rewrite.Source.Ex do
         def foo do
           :foo
         end
-      end\
+      end
       """
 
       iex> source = Source.Ex.from_string("""
@@ -197,24 +204,20 @@ defmodule Rewrite.Source.Ex do
       ...>     def   foo,   do:    :foo
       ...>    end
       ...> """)
-      iex> source = Source.Ex.format(source, force_do_end_blocks: true)
-      iex> Source.content(source)
+      iex> Source.Ex.format(source, force_do_end_blocks: true)
       """
       defmodule Foo do
         def foo do
           :foo
         end
-      end\
+      end
       """
-      iex> Source.Ex.quoted(source, 1) != Source.Ex.quoted(source, 2)
-      true
   '''
-  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword()) ::
-          Source.t() | String.t()
-  def format(input, formatter_opts \\ [])
+  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword()) :: String.t()
+  def format(input, formatter_opts \\ nil)
 
-  def format(%Source{filetype: %Ex{} = ex} = source, formatter_opts) do
-    Source.update(source, :content, format(ex.quoted, formatter_opts))
+  def format(%Source{filetype: %Ex{} = ex}, formatter_opts) do
+    ex.formatter.(ex.quoted, formatter_opts || ex.formatter_opts)
   end
 
   def format(input, formatter_opts) when is_binary(input) do
@@ -222,7 +225,26 @@ defmodule Rewrite.Source.Ex do
   end
 
   def format(input, formatter_opts) do
-    formatter(nil, formatter_opts).(input)
+    formatter(nil, formatter_opts).(input, nil)
+  end
+
+  @doc """
+  Puts the `formatter_opts` to the `source`.
+
+  The formatter options are in use during updating and formatting.
+  """
+  @spec put_formatter_opts(Source.t(), keyword()) :: Source.t()
+  def put_formatter_opts(%Source{filetype: %Ex{} = ex} = source, formatter_opts) do
+    Source.filetype(source, %Ex{ex | formatter_opts: formatter_opts})
+  end
+
+  @doc """
+  Merges the `formatter_opts` for a `source`.
+  """
+  @spec merge_formatter_opts(Source.t(), keyword()) :: Source.t()
+  def merge_formatter_opts(%Source{filetype: %Ex{} = ex} = source, formatter_opts) do
+    formatter_opts = Keyword.merge(ex.formatter_opts || [], formatter_opts)
+    Source.filetype(source, %Ex{ex | formatter_opts: formatter_opts})
   end
 
   defp add_filetype(source) do
@@ -249,15 +271,7 @@ defmodule Rewrite.Source.Ex do
     ext = Path.extname(file)
     plugins = plugins_for_ext(formatter_opts, ext)
 
-    {quoted_to_algebra, plugins} =
-      case plugins do
-        [FreedomFormatter | plugins] ->
-          # For now just a workaround to support the FreedomFormatter.
-          {&FreedomFormatter.Formatter.to_algebra/2, plugins}
-
-        plugins ->
-          {&Code.quoted_to_algebra/2, plugins}
-      end
+    {quoted_to_algebra, plugins} = quoted_to_algebra(plugins)
 
     formatter_opts =
       formatter_opts ++
@@ -267,12 +281,64 @@ defmodule Rewrite.Source.Ex do
           file: file
         ]
 
-    fn quoted ->
-      code = Sourceror.to_string(quoted, formatter_opts)
+    formatter_opts = Keyword.put(formatter_opts, :plugins, plugins)
 
-      Enum.reduce(plugins, code, fn plugin, code ->
-        plugin.format(code, formatter_opts)
-      end)
+    fn quoted, opts ->
+      opts = update_formatter_opts(formatter_opts, opts)
+      code = Sourceror.to_string(quoted, opts)
+
+      code =
+        opts
+        |> Keyword.fetch!(:plugins)
+        |> Enum.reduce(code, fn plugin, code ->
+          plugin.format(code, opts)
+        end)
+
+      String.trim_trailing(code, "\n") <> "\n"
+    end
+  end
+
+  defp update_formatter_opts(left, nil), do: left
+
+  defp update_formatter_opts(left, right) do
+    left
+    |> Keyword.merge(right)
+    |> exclude_plugins()
+    |> update_quoted_to_algebra()
+  end
+
+  defp exclude_plugins(opts) do
+    case Keyword.has_key?(opts, :plugins) && Keyword.has_key?(opts, :exclude_plugins) do
+      false ->
+        opts
+
+      true ->
+        Keyword.update!(opts, :plugins, fn plugins ->
+          exclude = Keyword.fetch!(opts, :exclude_plugins)
+          Enum.reject(plugins, fn plugin -> plugin in exclude end)
+        end)
+    end
+  end
+
+  defp update_quoted_to_algebra(opts) do
+    case Keyword.get(opts, :plugins, []) do
+      [FreedomFormatter | _] = plugins ->
+        {quoted_to_algebra, plugins} = quoted_to_algebra(plugins)
+        Keyword.merge(opts, quoted_to_algebra: quoted_to_algebra, plugins: plugins)
+
+      _plugins ->
+        opts
+    end
+  end
+
+  defp quoted_to_algebra(plugins) do
+    case plugins do
+      [FreedomFormatter | plugins] ->
+        # For now just a workaround to support the FreedomFormatter.
+        {&FreedomFormatter.Formatter.to_algebra/2, plugins}
+
+      plugins ->
+        {&Code.quoted_to_algebra/2, plugins}
     end
   end
 
