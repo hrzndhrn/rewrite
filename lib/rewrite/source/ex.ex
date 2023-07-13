@@ -309,15 +309,16 @@ defmodule Rewrite.Source.Ex do
 
   defp exclude_plugins(opts) do
     case Keyword.has_key?(opts, :plugins) && Keyword.has_key?(opts, :exclude_plugins) do
-      false ->
-        opts
-
-      true ->
-        Keyword.update!(opts, :plugins, fn plugins ->
-          exclude = Keyword.fetch!(opts, :exclude_plugins)
-          Enum.reject(plugins, fn plugin -> plugin in exclude end)
-        end)
+      true -> do_exclude_plugins(opts)
+      false -> opts
     end
+  end
+
+  defp do_exclude_plugins(opts) do
+    Keyword.update!(opts, :plugins, fn plugins ->
+      exclude = Keyword.fetch!(opts, :exclude_plugins)
+      Enum.reject(plugins, fn plugin -> plugin in exclude end)
+    end)
   end
 
   defp update_quoted_to_algebra(opts) do
