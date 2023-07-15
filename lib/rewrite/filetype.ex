@@ -36,7 +36,8 @@ defmodule Rewrite.Filetype do
   @doc """
   Returns a `Rewrite.Source` with a `filetype` form the `given`, `string` and `options`.
   """
-  @callback from_string(strong :: Source.content(), path :: Path.t() | nil, options :: opts()) :: Source.t()
+  @callback from_string(strong :: Source.content(), path :: Path.t() | nil, options :: opts()) ::
+              Source.t()
 
   @doc """
   Returns a `Rewrite.Source` with a `filetype` from a file.
