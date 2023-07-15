@@ -213,7 +213,7 @@ defmodule Rewrite.Source.Ex do
       end
       """
   '''
-  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword()) :: String.t()
+  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword() | nil) :: String.t()
   def format(input, formatter_opts \\ nil)
 
   def format(%Source{filetype: %Ex{} = ex}, formatter_opts) do
