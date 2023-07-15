@@ -1,11 +1,15 @@
 # Changelog
 
-## 0.7.0 - dev
+## 0.7.0-rc.0 - dev
 
 ### Breaking Changes
 
-+ Refactor hash ...
-+ No more conflicts ...
++ The module `Rewrite.Project` moves to `Rewrite`.
++ The `Rewrite.Source.hash` contains the hash of the read in file. The hash can
+  be used to detect if the file was changed after the last reading.
++ `Rewrite` accetps only `sources` with a valid and unique path. From this, the
+  handling of conflicting files is no longer part of `rewrite`.
++ Add `Rewrite.Filetype`.
 
 ## 0.6.3 - 2023/03/22
 
