@@ -1,9 +1,46 @@
 defmodule Rewrite.Source.Ex do
-  @moduledoc """
-  Bla ...
-  """
+  @moduledoc ~s'''
+  An implementation of `Rewrite.Filetye` to handle Elixir source files.
 
-  # TODO:update moduledoc
+  The module uses the [`sourceror`](https://github.com/doorgan/sourceror) package
+  to provide an [extended AST](https://hexdocs.pm/sourceror/readme.html#sourceror-s-ast)
+  representation of an Elixir file.
+
+  `Ex` extends the `source` by the key `:quoted`.
+
+  ## Examples
+
+      iex> source = Source.Ex.from_string("Enum.reverse(list)")
+      iex> Source.Ex.quoted(source)
+      {{:., [trailing_comments: [], line: 1, column: 5],
+        [
+          {:__aliases__,
+           [
+             trailing_comments: [],
+             leading_comments: [],
+             last: [line: 1, column: 1],
+             line: 1,
+             column: 1
+           ], [:Enum]},
+          :reverse
+        ]},
+       [
+         trailing_comments: [],
+         leading_comments: [],
+         closing: [line: 1, column: 18],
+         line: 1,
+         column: 6
+       ], [{:list, [trailing_comments: [], leading_comments: [], line: 1, column: 14], nil}]}
+      iex> quoted = quote(do: :foo)
+      iex> source = Source.update(source, :quoted, quoted) 
+      iex> Source.updated?(source)
+      true
+      iex> Source.content(source)
+      """
+      :foo
+      """
+
+  '''
 
   alias Mix.Tasks.Format
   alias Rewrite.Source
@@ -24,19 +61,33 @@ defmodule Rewrite.Source.Ex do
   @impl Rewrite.Filetype
   def extensions, do: [".ex", ".exs"]
 
+  @doc """
+  Returns a `%Rewrite.Source{}` with an added `:filetype`.
+  """
   @impl Rewrite.Filetype
-  def from_string(string, path \\ nil, _opts \\ []) do
+  def from_string(string, path \\ nil) do
     string
     |> Source.from_string(path)
     |> add_filetype()
   end
 
   @impl Rewrite.Filetype
-  def read!(path, _opts \\ []) do
+  def from_string(string, path, _opts), do: from_string(string, path)
+
+  @doc """
+  Returns a `%Rewrite.Source{}` with an added `:filetype`.
+
+  The `content` is reading from the file under the given `path`.
+  """
+  @impl Rewrite.Filetype
+  def read!(path) do
     path
     |> Source.read!()
     |> add_filetype()
   end
+
+  @impl Rewrite.Filetype
+  def read!(path, _opts), do: read!(path)
 
   @impl Rewrite.Filetype
   def handle_update(%Source{filetype: %Ex{} = ex} = source, :path) do
@@ -127,6 +178,7 @@ defmodule Rewrite.Source.Ex do
            [1]
          }
        ]}
+
   """
   @spec quoted(Source.t()) :: Macro.t()
   def quoted(%Source{filetype: %Ex{} = ex}) do
@@ -135,6 +187,7 @@ defmodule Rewrite.Source.Ex do
 
   @doc """
   Retruns the quoted expression for the given `version`.
+
   ## Examples
 
       iex> source = Source.Ex.from_string("1 + 1")
@@ -167,6 +220,7 @@ defmodule Rewrite.Source.Ex do
            [2]
          }
        ]}
+
   """
   @spec quoted(Source.t(), Source.version()) :: Macro.t()
   def quoted(%Source{filetype: %Ex{}, history: history} = source, version)
@@ -175,7 +229,7 @@ defmodule Rewrite.Source.Ex do
   end
 
   @doc ~S'''
-  Formats the given `source`, `code` or `quoted`.
+  Formats the given `source`, `code` or `quoted` into code.
 
   Returns an updated `source` when input is a `source`.
 
@@ -213,7 +267,8 @@ defmodule Rewrite.Source.Ex do
       end
       """
   '''
-  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword() | nil) :: String.t()
+  @spec format(Source.t() | String.t() | Macro.t(), formatter_opts :: keyword() | nil) ::
+          String.t()
   def format(input, formatter_opts \\ nil)
 
   def format(%Source{filetype: %Ex{} = ex}, formatter_opts) do
