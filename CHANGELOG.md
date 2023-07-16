@@ -9,6 +9,7 @@
   be used to detect if the file was changed after the last reading.
 + `Rewrite` accetps only `sources` with a valid and unique path. From this, the
   handling of conflicting files is no longer part of `rewrite`.
++ `Source.content/2` and `Source.path/2` is replaced by `Source.get/3`.
 + Add `Rewrite.Filetype`.
 
 ## 0.6.3 - 2023/03/22
