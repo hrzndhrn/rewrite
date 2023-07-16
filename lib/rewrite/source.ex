@@ -2,11 +2,15 @@ defmodule Rewrite.Source do
   @moduledoc """
   A representation of some source in a project.
 
-  The `%Source{}` contains the `code` of the file given by `path`. The module
-  contains `Source.update/3` to update the `path` and/or the `code`. The changes
-  are recorded in the `history` list.
+  The `%Source{}` contains the `content` of the file given by `path`. The module
+  contains `update/3` to update the `path` and/or the `content`. The changes are
+  recorded in the `history` list.
 
   The struct also holds `issues` for the source.
+
+  The different versions of `content` and `path` are available via `get/3`.
+
+  A source is extensible via `filetype`, see `Rewrite.Filetype`.
   """
 
   alias Rewrite.Source
