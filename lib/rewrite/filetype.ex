@@ -58,7 +58,7 @@ defmodule Rewrite.Filetype do
 
   Returns a `%Source{}` with an updated `filetype`.
   """
-  @callback handle_update(source :: Sourceurce.t(), key :: key()) :: t()
+  @callback handle_update(source :: Source.t(), key :: key()) :: t()
 
   @doc """
   This function is called when the `source` is updated by a `key` that is
