@@ -349,7 +349,7 @@ defmodule Rewrite.SourceTest do
 
       assert Source.get(source, :quoted, 1) ==
                {:__block__, [trailing_comments: [], leading_comments: [], line: 1, column: 1],
-                [:b]}
+                [:a]}
     end
 
     test "raises a SourceKeyError" do
