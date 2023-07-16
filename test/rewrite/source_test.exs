@@ -1,9 +1,9 @@
 defmodule Rewrite.SourceTest do
   use ExUnit.Case
 
-  alias Rewrite.SourceKeyError
   alias Rewrite.Source
   alias Rewrite.SourceError
+  alias Rewrite.SourceKeyError
 
   doctest Rewrite.Source
 
