@@ -1,6 +1,7 @@
 defmodule Rewrite.SourceTest do
   use ExUnit.Case
 
+  alias Rewrite.SourceKeyError
   alias Rewrite.Source
   alias Rewrite.SourceError
 
@@ -248,7 +249,7 @@ defmodule Rewrite.SourceTest do
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
-      assert Source.content(source) == ":b\n"
+      assert Source.get(source, :content) == ":b\n"
       assert Source.updated?(source) == true
     end
 
@@ -258,62 +259,12 @@ defmodule Rewrite.SourceTest do
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
-      assert Source.content(source) == ":a"
+      assert Source.get(source, :content) == ":a"
       assert Source.updated?(source) == false
     end
   end
 
-  describe "path/1" do
-    test "returns path" do
-      path = "test/fixtures/source/hello.txt"
-      source = Source.read!(path)
-
-      assert Source.path(source) == path
-    end
-
-    test "returns current path" do
-      source = Source.read!("test/fixtures/source/hello.txt")
-      path = "test/fixtures/source/new.ex"
-
-      source = Source.update(source, :path, path)
-
-      assert Source.path(source) == path
-    end
-  end
-
-  describe "path/2" do
-    test "returns the path for the given version" do
-      path = "test/fixtures/source/hello.txt"
-
-      source =
-        path
-        |> Source.read!()
-        |> Source.update(:path, "a.txt")
-        |> Source.update(:path, "b.txt")
-        |> Source.update(:path, "c.txt")
-
-      assert Source.path(source, 1) == path
-      assert Source.path(source, 2) == "a.txt"
-      assert Source.path(source, 3) == "b.txt"
-      assert Source.path(source, 4) == "c.txt"
-    end
-
-    test "returns the path for given version without path changes" do
-      path = "test/fixtures/source/hello.txt"
-
-      source =
-        path
-        |> Source.read!()
-        |> Source.update(:content, "bye")
-        |> Source.update(:content, "hi")
-
-      assert Source.path(source, 1) == path
-      assert Source.path(source, 2) == path
-      assert Source.path(source, 3) == path
-    end
-  end
-
-  describe "content/2" do
+  describe "get/3" do
     test "returns the content for the given version without content changes" do
       path = "test/fixtures/source/hello.txt"
       content = File.read!(path)
@@ -324,9 +275,9 @@ defmodule Rewrite.SourceTest do
         |> Source.update(:path, "a.txt")
         |> Source.update(:path, "b.txt")
 
-      assert Source.content(source, 1) == content
-      assert Source.content(source, 2) == content
-      assert Source.content(source, 3) == content
+      assert Source.get(source, :content, 1) == content
+      assert Source.get(source, :content, 2) == content
+      assert Source.get(source, :content, 3) == content
     end
 
     test "returns the content for given version" do
@@ -338,9 +289,101 @@ defmodule Rewrite.SourceTest do
         |> Source.update(:content, "bar")
         |> Source.update(:content, "baz")
 
-      assert Source.content(source, 1) == content
-      assert Source.content(source, 2) == "bar"
-      assert Source.content(source, 3) == "baz"
+      assert Source.get(source, :content, 1) == content
+      assert Source.get(source, :content, 2) == "bar"
+      assert Source.get(source, :content, 3) == "baz"
+    end
+
+    test "returns path" do
+      path = "test/fixtures/source/hello.txt"
+      source = Source.read!(path)
+
+      assert Source.get(source, :path) == path
+    end
+
+    test "returns current path" do
+      source = Source.read!("test/fixtures/source/hello.txt")
+      path = "test/fixtures/source/new.ex"
+
+      source = Source.update(source, :path, path)
+
+      assert Source.get(source, :path) == path
+    end
+
+    test "returns the path for the given version" do
+      path = "test/fixtures/source/hello.txt"
+
+      source =
+        path
+        |> Source.read!()
+        |> Source.update(:path, "a.txt")
+        |> Source.update(:path, "b.txt")
+        |> Source.update(:path, "c.txt")
+
+      assert Source.get(source, :path, 1) == path
+      assert Source.get(source, :path, 2) == "a.txt"
+      assert Source.get(source, :path, 3) == "b.txt"
+      assert Source.get(source, :path, 4) == "c.txt"
+    end
+
+    test "returns the path for given version without path changes" do
+      path = "test/fixtures/source/hello.txt"
+
+      source =
+        path
+        |> Source.read!()
+        |> Source.update(:content, "bye")
+        |> Source.update(:content, "hi")
+
+      assert Source.get(source, :path, 1) == path
+      assert Source.get(source, :path, 2) == path
+      assert Source.get(source, :path, 3) == path
+    end
+
+    test "returns quoted from filetype ex" do
+      source = ":a" |> Source.Ex.from_string() |> Source.update(:content, ":b")
+
+      assert Source.get(source, :quoted) ==
+               {:__block__, [trailing_comments: [], leading_comments: [], line: 1, column: 1],
+                [:b]}
+
+      assert Source.get(source, :quoted, 1) ==
+               {:__block__, [trailing_comments: [], leading_comments: [], line: 1, column: 1],
+                [:b]}
+    end
+
+    test "raises a SourceKeyError" do
+      source = Source.from_string("test")
+
+      message = """
+      key :unknown not found in source. This function is just definded for the \
+      keys :content, :path and keys provided by filetype.\
+      """
+
+      assert_raise SourceKeyError, message, fn ->
+        Source.get(source, :unknown)
+      end
+
+      assert_raise SourceKeyError, message, fn ->
+        Source.get(source, :unknown, 1)
+      end
+    end
+
+    test "raises a SourceKeyError for a source with filetype" do
+      source = Source.Ex.from_string("test")
+
+      message = """
+      key :unknown not found in source. This function is just definded for the \
+      keys :content, :path and keys provided by filetype.\
+      """
+
+      assert_raise SourceKeyError, message, fn ->
+        Source.get(source, :unknown)
+      end
+
+      assert_raise SourceKeyError, message, fn ->
+        Source.get(source, :unknown, 1)
+      end
     end
   end
 

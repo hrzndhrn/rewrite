@@ -13,6 +13,7 @@ defmodule Rewrite.Source do
   alias Rewrite.TextDiff
 
   alias Rewrite.SourceError
+  alias Rewrite.SourceKeyError
 
   defstruct [
     :from,
@@ -224,7 +225,7 @@ defmodule Rewrite.Source do
   defp maybe_rm(_source, false), do: :ok
 
   defp maybe_rm(source, true) do
-    case {Source.updated?(source, :path), Source.path(source, 1)} do
+    case {Source.updated?(source, :path), Source.get(source, :path, 1)} do
       {false, _path} ->
         :ok
 
@@ -474,7 +475,7 @@ defmodule Rewrite.Source do
   def file_changed?(%Source{from: from}) when from != :file, do: false
 
   def file_changed?(%Source{} = source) do
-    path = path(source, 1)
+    path = get(source, :path, 1)
 
     case File.read(path) do
       {:ok, content} -> hash(path, content) != source.hash
@@ -527,77 +528,89 @@ defmodule Rewrite.Source do
   end
 
   @doc """
-  Returns the current path for the given `source`.
+  Gets the value for `:content`, `:path` in `source` or a specific `key` in
+  `filetype`.
+
+  Raises `Rewrite.SourceKeyError` if the `key` can't be found.
   """
-  @spec path(t()) :: Path.t() | nil
-  def path(%Source{path: path}), do: path
+  @spec get(Source.t(), key()) :: value()
+  def get(%Source{path: path}, :path), do: path
+
+  def get(%Source{content: content}, :content), do: content
+
+  def get(%Source{filetype: nil}, key) when is_atom(key) do
+    raise SourceKeyError, key: key
+  end
+
+  def get(%Source{filetype: %module{}} = source, key) do
+    case module.fetch(source, key) do
+      {:ok, value} -> value
+      :error -> raise SourceKeyError, key: key
+    end
+  end
 
   @doc """
-  Returns the path of a `source` for the given `version`.
+  Gets the value for `:content`, `:path` in `source` or a specific `key` in
+  `filetype` for the given `version`.
+
+  Raises `Rewrite.SourceKeyError` if the `key` can't be found.
 
   ## Examples
+
+      iex> bar =
+      ...>   \"""
+      ...>   defmodule Bar do
+      ...>      def bar, do: :bar
+      ...>   end
+      ...>   \"""
+      iex> foo =
+      ...>   \"""
+      ...>   defmodule Foo do
+      ...>      def foo, do: :foo
+      ...>   end
+      ...>   \"""
+      iex> source = Source.Ex.from_string(bar)
+      iex> source = Source.update(source, :content, foo)
+      iex> Source.get(source, :content) == foo
+      true
+      iex> Source.get(source, :content, 2) == foo
+      true
+      iex> Source.get(source, :content, 1) == bar
+      true
 
       iex> source =
       ...>   "hello"
       ...>   |> Source.from_string("some/where/hello.txt")
       ...>   |> Source.update(:path, "some/where/else/hello.txt")
-      ...> Source.path(source, 1)
+      ...> Source.get(source, :path, 1)
       "some/where/hello.txt"
-      iex> Source.path(source, 2)
+      iex> Source.get(source, :path, 2)
       "some/where/else/hello.txt"
+
   """
-  @spec path(t(), version()) :: Path.t() | nil
-  def path(%Source{path: path, history: history}, version)
-      when version >= 1 and version <= length(history) + 1 do
+  @spec get(Source.t(), key(), version()) :: value()
+  def get(%Source{history: history} = source, key, version)
+      when key in [:content, :path] and
+             version >= 1 and version <= length(history) + 1 do
+    value = Map.fetch!(source, key)
+
     history
     |> Enum.take(length(history) - version + 1)
-    |> Enum.reduce(path, fn
-      {:path, _by, path}, _path -> path
-      _version, path -> path
+    |> Enum.reduce(value, fn
+      {^key, _by, value}, _value -> value
+      _version, value -> value
     end)
   end
 
-  @doc """
-  Returns the current content for the given `source`.
-  """
-  @spec content(t()) :: String.t()
-  def content(%Source{content: content}), do: content
+  def get(%Source{filetype: nil}, key, _version) do
+    raise SourceKeyError, key: key
+  end
 
-  @doc ~S'''
-  Returns the content of a `source` for the given `version`.
-
-  ## Examples
-
-      iex> bar =
-      ...>   """
-      ...>   defmodule Bar do
-      ...>      def bar, do: :bar
-      ...>   end
-      ...>   """
-      iex> foo =
-      ...>   """
-      ...>   defmodule Foo do
-      ...>      def foo, do: :foo
-      ...>   end
-      ...>   """
-      iex> source = Source.Ex.from_string(bar)
-      iex> source = Source.update(source, :content, foo)
-      iex> Source.content(source) == foo
-      true
-      iex> Source.content(source, 2) == foo
-      true
-      iex> Source.content(source, 1) == bar
-      true
-  '''
-  @spec content(t(), version()) :: String.t()
-  def content(%Source{content: content, history: history}, version)
-      when version >= 1 and version <= length(history) + 1 do
-    history
-    |> Enum.take(length(history) - version + 1)
-    |> Enum.reduce(content, fn
-      {:content, _by, content}, _content -> content
-      _version, content -> content
-    end)
+  def get(%Source{filetype: %moudle{}} = source, key, version) do
+    case moudle.fetch(source, key, version) do
+      {:ok, value} -> value
+      :error -> raise SourceKeyError, key: key
+    end
   end
 
   @doc ~S'''
@@ -634,8 +647,8 @@ defmodule Rewrite.Source do
   @spec diff(t(), opts()) :: iodata()
   def diff(%Source{} = source, opts \\ []) do
     TextDiff.format(
-      source |> content(1) |> eof_newline(),
-      source |> content() |> eof_newline(),
+      source |> get(:content, 1) |> eof_newline(),
+      source |> get(:content) |> eof_newline(),
       opts
     )
   end
@@ -684,19 +697,19 @@ defmodule Rewrite.Source do
       iex> b = Source.update(a, :content, "test-b")
       iex> c = Source.update(b, :path, "test/bar.txt")
       iex> d = Source.update(c, :content, "test-d")
-      iex> d |> Source.undo() |> Source.content()
+      iex> d |> Source.undo() |> Source.get(:content)
       "test-b"
-      iex> d |> Source.undo(1) |> Source.content()
+      iex> d |> Source.undo(1) |> Source.get(:content)
       "test-b"
-      iex> d |> Source.undo(2) |> Source.path()
+      iex> d |> Source.undo(2) |> Source.get(:path)
       "test/foo.txt"
-      iex> d |> Source.undo(3) |> Source.content()
+      iex> d |> Source.undo(3) |> Source.get(:content)
       "test-a"
-      iex> d |> Source.undo(9) |> Source.content()
+      iex> d |> Source.undo(9) |> Source.get(:content)
       "test-a"
       iex> d |> Source.undo(9) |> Source.updated?()
       false
-      iex> d |> Source.undo(-9) |> Source.content()
+      iex> d |> Source.undo(-9) |> Source.get(:content)
       "test-d"
   """
   @spec undo(t(), non_neg_integer()) :: t()

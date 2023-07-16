@@ -11,7 +11,7 @@ defmodule Rewrite.Source.Ex do
   ## Examples
 
       iex> source = Source.Ex.from_string("Enum.reverse(list)")
-      iex> Source.Ex.quoted(source)
+      iex> Source.get(source, :quoted)
       {{:., [trailing_comments: [], line: 1, column: 5],
         [
           {:__aliases__,
@@ -32,10 +32,10 @@ defmodule Rewrite.Source.Ex do
          column: 6
        ], [{:list, [trailing_comments: [], leading_comments: [], line: 1, column: 14], nil}]}
       iex> quoted = quote(do: :foo)
-      iex> source = Source.update(source, :quoted, quoted) 
+      iex> source = Source.update(source, :quoted, quoted)
       iex> Source.updated?(source)
       true
-      iex> Source.content(source)
+      iex> Source.get(source, :content)
       """
       :foo
       """
@@ -118,6 +118,23 @@ defmodule Rewrite.Source.Ex do
     })
   end
 
+  @impl Rewrite.Filetype
+  def fetch(%Source{filetype: %Ex{} = ex}, :quoted) do
+    {:ok, ex.quoted}
+  end
+
+  def fetch(%Source{}, _key), do: :error
+
+  @impl Rewrite.Filetype
+  def fetch(%Source{filetype: %Ex{}, history: history} = source, :quoted, version)
+      when version >= 1 and version <= length(history) + 1 do
+    value = source |> Source.get(:content, version) |> Sourceror.parse_string!()
+
+    {:ok, value}
+  end
+
+  def fetch(%Source{filetype: %Ex{}}, _key, _version), do: :error
+
   @doc """
   Returns the current modules for the given `source`.
   """
@@ -155,77 +172,7 @@ defmodule Rewrite.Source.Ex do
   @spec modules(Source.t(), Source.version()) :: [module()]
   def modules(%Source{filetype: %Ex{}, history: history} = source, version)
       when version >= 1 and version <= length(history) + 1 do
-    source |> Source.content(version) |> Sourceror.parse_string!() |> get_modules()
-  end
-
-  @doc """
-  Returns the current quoted expression from the `source`.
-
-  ## Examples
-
-      iex> source = Source.Ex.from_string("1 + 1")
-      iex> Source.Ex.quoted(source)
-      {:+, [trailing_comments: [], line: 1, column: 3],
-       [
-         {
-           :__block__,
-           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 1],
-           [1]
-         },
-         {
-           :__block__,
-           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 5],
-           [1]
-         }
-       ]}
-
-  """
-  @spec quoted(Source.t()) :: Macro.t()
-  def quoted(%Source{filetype: %Ex{} = ex}) do
-    ex.quoted
-  end
-
-  @doc """
-  Retruns the quoted expression for the given `version`.
-
-  ## Examples
-
-      iex> source = Source.Ex.from_string("1 + 1")
-      iex> source = Source.update(source, :content, "2 * 2")
-      iex> Source.Ex.quoted(source, 1)
-      {:+, [trailing_comments: [], line: 1, column: 3],
-       [
-         {
-           :__block__,
-           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 1],
-           [1]
-         },
-         {
-           :__block__,
-           [trailing_comments: [], leading_comments: [], token: "1", line: 1, column: 5],
-           [1]
-         }
-       ]}
-      iex> Source.Ex.quoted(source, 2)
-      {:*, [trailing_comments: [], line: 1, column: 3],
-       [
-         {
-           :__block__,
-           [trailing_comments: [], leading_comments: [], token: "2", line: 1, column: 1],
-           [2]
-         },
-         {
-           :__block__,
-           [trailing_comments: [], leading_comments: [], token: "2", line: 1, column: 5],
-           [2]
-         }
-       ]}
-
-  """
-  @spec quoted(Source.t(), Source.version()) :: Macro.t()
-  def quoted(%Source{filetype: %Ex{}, history: history} = source, version)
-      when version >= 1 and version <= length(history) + 1 do
-    source |> Source.content(version) |> Sourceror.parse_string!()
+    source |> Source.get(:content, version) |> Sourceror.parse_string!() |> get_modules()
   end
 
   @doc ~S'''

@@ -26,10 +26,10 @@ defmodule Rewrite.Source.ExTest do
 
     test "updateds content" do
       source = Source.Ex.from_string(":a", "a.exs")
-      assert Source.Ex.quoted(source) == Sourceror.parse_string!(":a")
+      assert Source.get(source, :quoted) == Sourceror.parse_string!(":a")
 
       source = Source.update(source, :content, ":x")
-      assert Source.Ex.quoted(source) == Sourceror.parse_string!(":x")
+      assert Source.get(source, :quoted) == Sourceror.parse_string!(":x")
     end
 
     test "updates fromatter" do

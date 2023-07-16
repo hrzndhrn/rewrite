@@ -58,7 +58,7 @@ defmodule Rewrite.Filetype do
 
   Returns a `%Source{}` with an updated `filetype`.
   """
-  @callback handle_update(source :: Source.t(), key :: key()) :: t()
+  @callback handle_update(source :: Sourceurce.t(), key :: key()) :: t()
 
   @doc """
   This function is called when the `source` is updated by a `key` that is
@@ -68,4 +68,20 @@ defmodule Rewrite.Filetype do
   `source`.
   """
   @callback handle_update(source :: Source.t(), key :: key(), value :: value()) :: updates()
+
+  @doc """
+  Fetches the value for a specific `key` for the given `source`.
+
+  If `source` contains the given `key` then its value is returned in the shape
+  of {:ok, value}. If `source` doesn't contain key, :error is returned.
+  """
+  @callback fetch(source :: Source.t(), key :: key()) :: value()
+
+  @doc """
+  Fetches the value for a specific `key` in a `source` for the given `version`.
+
+  If `source` contains the given `key` then its value is returned in the shape
+  of {:ok, value}. If `source` doesn't contain key, :error is returned.
+  """
+  @callback fetch(source :: Source.t(), key :: key(), version :: Source.version()) :: value()
 end

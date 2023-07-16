@@ -367,10 +367,10 @@ defmodule Rewrite do
       iex> b = Source.Ex.from_string(":b", "b.exs")
       iex> {:ok, project} = Rewrite.from_sources([a, b])
       iex> {:ok, project} = Rewrite.update(project, "a.exs", Source.Ex.from_string(":foo", "a.exs"))
-      iex> project |> Rewrite.source!("a.exs") |> Source.content()
+      iex> project |> Rewrite.source!("a.exs") |> Source.get(:content)
       ":foo"
       iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, :content, ":baz") end)
-      iex> project |> Rewrite.source!("a.exs") |> Source.content()
+      iex> project |> Rewrite.source!("a.exs") |> Source.get(:content)
       ":baz"
       iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, :path, "c.exs") end)
       iex> Rewrite.paths(project)

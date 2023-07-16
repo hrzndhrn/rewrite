@@ -333,7 +333,7 @@ defmodule RewriteTest do
         end)
 
       assert project != mapped
-      assert mapped |> Rewrite.source!(foo) |> Source.content() == ":test"
+      assert mapped |> Rewrite.source!(foo) |> Source.get(:content) == ":test"
 
       assert errors == [
                %UpdateError{reason: :nopath, source: baz},
@@ -669,7 +669,7 @@ defmodule RewriteTest do
 
       assert {:ok, project} = Rewrite.write(project, source)
       assert {:ok, source} = Rewrite.source(project, foo)
-      assert Source.content(source) == File.read!(foo)
+      assert Source.get(source, :content) == File.read!(foo)
       assert Source.updated?(source) == false
     end
 
@@ -698,7 +698,7 @@ defmodule RewriteTest do
 
       assert {:ok, project} = Rewrite.write(project, foo)
       assert {:ok, source} = Rewrite.source(project, foo)
-      assert Source.content(source) == File.read!(foo)
+      assert Source.get(source, :content) == File.read!(foo)
       assert Source.updated?(source) == false
     end
 
