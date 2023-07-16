@@ -38,6 +38,10 @@ defmodule Rewrite do
 
   @doc """
   Creates a `%Rewrite{}` from the given `inputs`.
+
+  The optional second argument is a list of modules implementing the behavior
+  `Rewrite.Filetye`. This list is used to add the `filetype` to the `sources` of
+  the corresponding files.
   """
   @spec new!(input() | [input()], [module]) :: t()
   def new!(inputs, filetypes \\ [Source.Ex]) do
