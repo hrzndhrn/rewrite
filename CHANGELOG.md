@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0-rc.0 - dev
+## 0.7.0 - 2023/07/17
 
 ### Breaking Changes
 
