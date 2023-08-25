@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2023/08/25
+
++ Update version requirement for `sourceror` to `~> 0.12.0`.
++ Add function `Rewrite.Source.issues/1`.
+
 ## 0.7.0 - 2023/07/17
 
 ### Breaking Changes
