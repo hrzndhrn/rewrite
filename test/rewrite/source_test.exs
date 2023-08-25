@@ -437,4 +437,15 @@ defmodule Rewrite.SourceTest do
       assert Source.undo(d, 9) == a
     end
   end
+
+  describe "issues/1" do
+    test "returns issues" do
+      source =
+        Source.from_string("test")
+        |> Source.add_issue(:foo)
+        |> Source.add_issue(:bar)
+
+      assert Source.issues(source) == [:bar, :foo]
+    end
+  end
 end

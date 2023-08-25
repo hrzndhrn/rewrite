@@ -61,7 +61,7 @@ defmodule Rewrite.Source do
           content: String.t(),
           hash: String.t(),
           history: [{kind(), by(), String.t()}],
-          issues: [issue()],
+          issues: [{version(), issue()}],
           filetype: filetype(),
           from: from(),
           owner: owner(),
@@ -309,6 +309,16 @@ defmodule Rewrite.Source do
   """
   @spec add_issue(t(), issue()) :: t()
   def add_issue(%Source{} = source, issue), do: add_issues(source, [issue])
+
+  @doc """
+  Returns all issues of the given `source`.
+  """
+  @spec issues(t()) :: [issue()]
+  def issues(source) do
+    source
+    |> Map.get(:issues, [])
+    |> Enum.map(fn {_version, issue} -> issue end)
+  end
 
   @doc """
   Assigns a private `key` and `value` to the `source`.
