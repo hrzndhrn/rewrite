@@ -358,7 +358,7 @@ defmodule Rewrite.Source.Ex do
     code
     |> Zipper.zip()
     |> Zipper.traverse([], fn
-      {{:defmodule, _meta, [module | _args]}, _zipper_meta} = zipper, acc ->
+      %Zipper{node: {:defmodule, _meta, [module | _args]}} = zipper, acc ->
         {zipper, [concat(module) | acc]}
 
       zipper, acc ->
