@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2023/08/27
+
++ Use `sourceror` version `~> 0.13`.
+
 ## 0.7.1 - 2023/08/25
 
 + Update version requirement for `sourceror` to `~> 0.12.0`.
