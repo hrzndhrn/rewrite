@@ -86,9 +86,6 @@ defmodule Rewrite.Source.Ex do
     |> add_filetype(formatter_opts)
   end
 
-  # @impl Rewrite.Filetype
-  # def read!(path, _opts), do: read!(path)
-
   @impl Rewrite.Filetype
   def handle_update(%Source{filetype: %Ex{} = ex} = source, :path) do
     %Ex{ex | formatter: formatter(source.path, nil)}
