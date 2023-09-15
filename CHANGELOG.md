@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2023/09/15
+
++ Add options to the list of file types in `Rewrite.new/1` and `Rewrite.read!/2`.
+
 ## 0.8.0 - 2023/08/27
 
 + Use `sourceror` version `~> 0.13`.

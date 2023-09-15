@@ -90,11 +90,28 @@ defmodule RewriteTest do
       assert %Source{filetype: %Source.Ex{}} = Rewrite.source!(project, path)
     end
 
-    test "creates a project from one file withou extensions" do
+    test "creates a project from one file without extensions" do
       path = "test/fixtures/source/simple.ex"
       assert project = Rewrite.new!(path, [])
       assert Enum.count(project.sources) == 1
       assert %Source{filetype: nil} = Rewrite.source!(project, path)
+    end
+
+    test "creates a project from one file with given extensions" do
+      ex = "test/fixtures/source/simple.ex"
+      txt = "test/fixtures/source/hello.txt"
+
+      assert project =
+               Rewrite.new!([ex, txt], [
+                 {Source, owner: Test},
+                 {Source.Ex, exclude_plugins: [Test]}
+               ])
+
+      assert Enum.count(project.sources) == 2
+      assert %Source{filetype: nil, owner: Test} = Rewrite.source!(project, txt)
+
+      assert %Source{filetype: %Source.Ex{formatter_opts: [exclude_plugins: [Test]]}} =
+               Rewrite.source!(project, ex)
     end
 
     test "creates a project from wildcard" do
@@ -158,7 +175,7 @@ defmodule RewriteTest do
              ]) ==
                {:ok,
                 %Rewrite{
-                  extensions: %{".ex" => Rewrite.Source.Ex, ".exs" => Rewrite.Source.Ex},
+                  extensions: %{"default" => Source, ".ex" => Source.Ex, ".exs" => Source.Ex},
                   sources: %{
                     "b.txt" => %Source{
                       from: :string,
@@ -212,7 +229,11 @@ defmodule RewriteTest do
                Source.from_string("b", "b.txt")
              ]) ==
                %Rewrite{
-                 extensions: %{".ex" => Rewrite.Source.Ex, ".exs" => Rewrite.Source.Ex},
+                 extensions: %{
+                   "default" => Source,
+                   ".ex" => Source.Ex,
+                   ".exs" => Source.Ex
+                 },
                  sources: %{
                    "b.txt" => %Source{
                      from: :string,
