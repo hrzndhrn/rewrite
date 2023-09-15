@@ -80,14 +80,14 @@ defmodule Rewrite.Source.Ex do
   The `content` is reading from the file under the given `path`.
   """
   @impl Rewrite.Filetype
-  def read!(path) do
+  def read!(path, formatter_opts \\ []) do
     path
     |> Source.read!()
-    |> add_filetype()
+    |> add_filetype(formatter_opts)
   end
 
-  @impl Rewrite.Filetype
-  def read!(path, _opts), do: read!(path)
+  # @impl Rewrite.Filetype
+  # def read!(path, _opts), do: read!(path)
 
   @impl Rewrite.Filetype
   def handle_update(%Source{filetype: %Ex{} = ex} = source, :path) do
@@ -103,7 +103,7 @@ defmodule Rewrite.Source.Ex do
     if ex.quoted == quoted do
       []
     else
-      code = ex.formatter.(quoted, nil)
+      code = ex.formatter.(quoted, ex.formatter_opts)
 
       [content: code, filetype: %Ex{ex | quoted: quoted}]
     end
@@ -249,11 +249,12 @@ defmodule Rewrite.Source.Ex do
     Source.filetype(source, %Ex{ex | formatter_opts: formatter_opts})
   end
 
-  defp add_filetype(source) do
+  defp add_filetype(source, opts \\ nil) do
     ex =
       struct!(Ex,
         quoted: Sourceror.parse_string!(source.content),
-        formatter: formatter(source.path, nil)
+        formatter: formatter(source.path, nil),
+        formatter_opts: opts
       )
 
     Source.filetype(source, ex)

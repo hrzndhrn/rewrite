@@ -20,19 +20,44 @@ defmodule Rewrite do
   @doc """
   Creates an empty project.
 
+  The optional argument is a list of modules implementing the behavior
+  `Rewrite.Filetye`. This list is used to add the `filetype` to the `sources` of
+  the corresponding files. The list can contain modules representing a file
+  type or a tuple of `{module(), keyword()}`. Rewrite uses the keyword list from
+  the tuple as the options argument when a file is reading.
+
   ## Examples
 
-      iex> Rewrite.new()
+      iex> project = Rewrite.new()
       %Rewrite{
         sources: %{},
         extensions: %{
+          "default" => Source,
           ".ex" => Source.Ex,
           ".exs" => Source.Ex,
         }
       }
+      iex> path = "test/fixtures/source/hello.txt"
+      iex> project = Rewrite.read!(project, path)
+      iex> project |> Rewrite.source!(path) |> Source.get(:content)
+      "hello\\n"
+      iex> project |> Rewrite.source!(path) |> Source.owner()
+      Rewrite
+
+      iex> project = Rewrite.new([{Rewrite.Source, owner: MyApp}])
+      %Rewrite{
+        sources: %{},
+        extensions: %{
+          "default" => {Source, owner: MyApp}
+        }
+      }
+      iex> path = "test/fixtures/source/hello.txt"
+      iex> project = Rewrite.read!(project, path)
+      iex> project |> Rewrite.source!(path) |> Source.owner()
+      MyApp
   """
-  @spec new([module()]) :: t()
-  def new(filetypes \\ [Source.Ex]) when is_list(filetypes) do
+  @spec new([module() | {module(), keyword()}]) :: t()
+  def new(filetypes \\ [Source, Source.Ex]) when is_list(filetypes) do
     %Rewrite{extensions: extensions(filetypes)}
   end
 
@@ -40,11 +65,10 @@ defmodule Rewrite do
   Creates a `%Rewrite{}` from the given `inputs`.
 
   The optional second argument is a list of modules implementing the behavior
-  `Rewrite.Filetye`. This list is used to add the `filetype` to the `sources` of
-  the corresponding files.
+  `Rewrite.Filetye`. For more info, see `new/1`.
   """
-  @spec new!(input() | [input()], [module]) :: t()
-  def new!(inputs, filetypes \\ [Source.Ex]) do
+  @spec new!(input() | [input()], [module() | {module(), keyword()}]) :: t()
+  def new!(inputs, filetypes \\ [Source, Source.Ex]) do
     extensions = extensions(filetypes)
 
     sources =
@@ -611,19 +635,33 @@ defmodule Rewrite do
 
   defp extensions(modules) do
     modules
-    |> Enum.flat_map(fn module ->
-      module.extensions()
-      |> List.wrap()
-      |> Enum.map(fn extension -> {extension, module} end)
+    |> Enum.flat_map(fn
+      Source ->
+        [{"default", Source}]
+
+      {Source, opts} ->
+        [{"default", {Source, opts}}]
+
+      {module, opts} ->
+        Enum.map(module.extensions, fn extension -> {extension, {module, opts}} end)
+
+      module ->
+        Enum.map(module.extensions, fn extension -> {extension, module} end)
     end)
     |> Map.new()
+    |> Map.put_new("default", Source)
   end
 
   defp read_source!(path, extensions) when not is_nil(path) do
     ext = Path.extname(path)
-    source = Map.get(extensions, ext, Source)
 
-    source.read!(path)
+    {source, opts} =
+      case Map.get(extensions, ext, Map.fetch!(extensions, "default")) do
+        {module, opts} -> {module, opts}
+        module -> {module, []}
+      end
+
+    source.read!(path, opts)
   end
 
   defp expand(inputs) do

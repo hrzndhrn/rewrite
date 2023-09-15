@@ -64,7 +64,7 @@ defmodule Rewrite.Filetype do
   This function is called when the `source` is updated by a `key` that is
   handled by the current `filetype`.
 
-  Retruns a keyword with the keys `:content` and `:filetype` to update the
+  Returns a keyword with the keys `:content` and `:filetype` to update the
   `source`.
   """
   @callback handle_update(source :: Source.t(), key :: key(), value :: value()) :: updates()
