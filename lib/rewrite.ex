@@ -69,17 +69,9 @@ defmodule Rewrite do
   """
   @spec new!(input() | [input()], [module() | {module(), keyword()}]) :: t()
   def new!(inputs, filetypes \\ [Source, Source.Ex]) do
-    extensions = extensions(filetypes)
-
-    sources =
-      inputs
-      |> expand()
-      |> Enum.reduce(%{}, fn path, sources ->
-        source = read_source!(path, extensions)
-        Map.put(sources, source.path, source)
-      end)
-
-    struct!(Rewrite, sources: sources, extensions: extensions)
+    filetypes
+    |> new()
+    |> read!(inputs)
   end
 
   @doc """
