@@ -1,5 +1,5 @@
 defmodule RewriteTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias Rewrite.Source
 
@@ -140,6 +140,19 @@ defmodule RewriteTest do
 
       assert project = Rewrite.new!(inputs)
       assert Enum.count(project.sources) == 2
+    end
+
+    test "throws an error for unreadable file" do
+      file = "test/fixtures/source/simple.ex"
+      File.chmod(file, 0o111)
+      inputs = ["test/fixtures/source/*.ex"]
+      message = ~s|could not read file "test/fixtures/source/simple.ex": permission denied|
+
+      assert_raise File.Error, message, fn ->
+        Rewrite.new!(inputs)
+      end
+
+      File.chmod(file, 0o644)
     end
   end
 

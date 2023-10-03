@@ -86,20 +86,38 @@ defmodule Rewrite do
   @spec read!(t(), input() | [input()], opts()) :: t()
   def read!(%Rewrite{} = rewrite, inputs, opts \\ []) do
     force = Keyword.get(opts, :force, false)
+    reader = reader(Map.keys(rewrite.sources), rewrite.extensions, force)
+
+    inputs = expand(inputs)
 
     sources =
-      inputs
-      |> expand()
-      |> Enum.reduce(rewrite.sources, fn path, sources ->
-        if File.dir?(path) || (!force && Map.has_key?(sources, path)) do
+      Rewrite.TaskSupervisor
+      |> Task.Supervisor.async_stream_nolink(inputs, reader)
+      |> Enum.reduce(rewrite.sources, fn
+        {:ok, nil}, sources ->
           sources
-        else
-          source = read_source!(path, rewrite.extensions)
-          Map.put(sources, source.path, source)
-        end
+
+        {:ok, {path, source}}, sources ->
+          Map.put(sources, path, source)
+
+        {:exit, {error, _stacktrace}}, _sources when is_exception(error) ->
+          raise error
       end)
 
     %{rewrite | sources: sources}
+  end
+
+  defp reader(paths, extensions, force) do
+    fn path ->
+      Logger.disable(self())
+
+      if File.dir?(path) || (!force && path in paths) do
+        nil
+      else
+        source = read_source!(path, extensions)
+        {path, source}
+      end
+    end
   end
 
   @doc """
@@ -604,25 +622,20 @@ defmodule Rewrite do
 
   defp write_all(%Rewrite{sources: sources} = rewrite, exclude, force)
        when force in [nil, :force] do
+    sources = for {path, source} <- sources, path not in exclude, do: source
+    writer = fn source -> Source.write(source, force: force) end
+
     {rewrite, errors} =
-      sources
-      |> Map.values()
-      |> Enum.reduce({rewrite, []}, fn source, acc ->
-        do_write_all(source, exclude, force, acc)
+      Rewrite.TaskSupervisor
+      |> Task.Supervisor.async_stream_nolink(sources, writer)
+      |> Enum.reduce({rewrite, []}, fn {:ok, result}, {rewrite, errors} ->
+        case result do
+          {:ok, source} -> {Rewrite.update!(rewrite, source), errors}
+          {:error, error} -> {rewrite, [error | errors]}
+        end
       end)
 
     if Enum.empty?(errors), do: {:ok, rewrite}, else: {:error, errors, rewrite}
-  end
-
-  defp do_write_all(source, exclude, force, {rewrite, errors}) do
-    if source.path in exclude do
-      {rewrite, errors}
-    else
-      case Source.write(source, force: force) do
-        {:ok, source} -> {Rewrite.update!(rewrite, source), errors}
-        {:error, error} -> {rewrite, [error | errors]}
-      end
-    end
   end
 
   defp extensions(modules) do
