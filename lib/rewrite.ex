@@ -91,7 +91,7 @@ defmodule Rewrite do
       inputs
       |> expand()
       |> Enum.reduce(rewrite.sources, fn path, sources ->
-        if !force && Map.has_key?(sources, path) do
+        if File.dir?(path) || (!force && Map.has_key?(sources, path)) do
           sources
         else
           source = read_source!(path, rewrite.extensions)
