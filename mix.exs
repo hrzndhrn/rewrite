@@ -1,7 +1,7 @@
 defmodule Rewrite.MixProject do
   use Mix.Project
 
-  @version "0.9.0"
+  @version "0.9.1"
   @source_url "https://github.com/hrzndhrn/rewrite"
 
   def project do
@@ -25,7 +25,8 @@ defmodule Rewrite.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :mix, :crypto]
+      extra_applications: [:logger, :mix, :crypto],
+      mod: {Rewrite.Application, []}
     ]
   end
 
@@ -71,6 +72,7 @@ defmodule Rewrite.MixProject do
       {:glob_ex, "~> 0.1"},
       {:sourceror, "~> 0.13"},
       # dev/test
+      {:benchee_dsl, "~> 0.5", only: :dev},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.25", only: :dev, runtime: false},

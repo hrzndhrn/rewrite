@@ -418,7 +418,7 @@ defmodule Rewrite.Source do
     %Source{source | filetype: filetype}
   end
 
-  defp update_content(source, nil, _b), do: source
+  defp update_content(source, nil, _by), do: source
 
   defp update_content(source, content, by) do
     update(source, by, :content, content)

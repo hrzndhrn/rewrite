@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2023/10/07
+
++ Read and write files async.
+
 ## 0.9.0 - 2023/09/15
 
 + Add options to the list of file types in `Rewrite.new/1` and `Rewrite.read!/2`.
