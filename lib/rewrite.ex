@@ -86,7 +86,7 @@ defmodule Rewrite do
   @spec read!(t(), input() | [input()], opts()) :: t()
   def read!(%Rewrite{} = rewrite, inputs, opts \\ []) do
     force = Keyword.get(opts, :force, false)
-    reader = reader(Map.keys(rewrite.sources), rewrite.extensions, force)
+    reader = rewrite.sources |> Map.keys() |> reader(rewrite.extensions, force)
 
     inputs = expand(inputs)
 
