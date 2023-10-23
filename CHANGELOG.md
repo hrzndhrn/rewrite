@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 - 2023/10/07
+## 0.9.1 - 2023/10/07
 
 + Read and write files async.
 
