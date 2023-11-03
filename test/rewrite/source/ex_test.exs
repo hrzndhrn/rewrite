@@ -24,6 +24,37 @@ defmodule Rewrite.Source.ExTest do
       assert source.content == ":x\n"
     end
 
+    test "updates quoted with sync_quoted: true" do
+      source = Source.Ex.from_string(":a", "a.exs")
+
+      {:ok, quoted} =
+        Code.string_to_quoted("""
+          defmodule Test do
+            def test, do: :test
+          end
+        """)
+
+      source = Source.update(source, :quoted, quoted)
+
+      assert Source.get(source, :quoted) != quoted
+    end
+
+    test "updates quoted with sync_quoted: false" do
+      source = Source.Ex.read!("test/fixtures/source/simple.ex", sync_quoted: false)
+
+      {:ok, quoted} =
+        Code.string_to_quoted("""
+          defmodule Test do
+            def test, do: :test
+          end
+        """)
+
+      source = Source.update(source, :quoted, quoted)
+
+      assert source.filetype.quoted == quoted
+      assert Source.get(source, :quoted) == quoted
+    end
+
     test "updateds content" do
       source = Source.Ex.from_string(":a", "a.exs")
       assert Source.get(source, :quoted) == Sourceror.parse_string!(":a")

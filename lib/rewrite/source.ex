@@ -137,8 +137,8 @@ defmodule Rewrite.Source do
 
   ## Options
 
-  + `:force`, default: `false` - forces the saving to overwrite changed files.
-  + `:rm`, default: `true` - prevents file deletion when set to `false`.
+    * `:force`, default: `false` - forces the saving to overwrite changed files.
+    * `:rm`, default: `true` - prevents file deletion when set to `false`.
 
   ## Examples
 
@@ -421,7 +421,17 @@ defmodule Rewrite.Source do
   defp update_content(source, nil, _by), do: source
 
   defp update_content(source, content, by) do
-    update(source, by, :content, content)
+    legacy = Map.fetch!(source, :content)
+
+    case legacy == content do
+      true ->
+        source
+
+      false ->
+        source
+        |> do_update(:content, content)
+        |> update_history(:content, by, legacy)
+    end
   end
 
   @doc """

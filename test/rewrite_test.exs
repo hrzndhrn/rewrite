@@ -104,14 +104,16 @@ defmodule RewriteTest do
       assert project =
                Rewrite.new!([ex, txt], [
                  {Source, owner: Test},
-                 {Source.Ex, exclude_plugins: [Test]}
+                 {Source.Ex, formatter_opts: [exclude_plugins: [Test]]}
                ])
 
       assert Enum.count(project.sources) == 2
       assert %Source{filetype: nil, owner: Test} = Rewrite.source!(project, txt)
 
-      assert %Source{filetype: %Source.Ex{formatter_opts: [exclude_plugins: [Test]]}} =
+      assert %Source{filetype: %Source.Ex{opts: opts}} =
                Rewrite.source!(project, ex)
+
+      assert opts == [formatter_opts: [exclude_plugins: [Test]]]
     end
 
     test "creates a project from wildcard" do
