@@ -290,10 +290,9 @@ defmodule Rewrite.Source.Ex do
   """
   @spec put_formatter_opts(Source.t(), keyword()) :: Source.t()
   def put_formatter_opts(%Source{filetype: %Ex{opts: opts} = ex} = source, formatter_opts) do
-    Source.filetype(source, %Ex{
-      ex
-      | opts: Keyword.put(opts || [], :formatter_opts, formatter_opts)
-    })
+    opts = Keyword.put(opts || [], :formatter_opts, formatter_opts)
+
+    Source.filetype(source, %Ex{ex | opts: opts})
   end
 
   @doc """
@@ -302,7 +301,9 @@ defmodule Rewrite.Source.Ex do
   @spec merge_formatter_opts(Source.t(), keyword()) :: Source.t()
   def merge_formatter_opts(%Source{filetype: %Ex{opts: opts} = ex} = source, formatter_opts) do
     formatter_opts = Keyword.merge(formatter_opts(ex), formatter_opts)
-    Source.filetype(source, %Ex{ex | opts: Keyword.put(opts || [], :formatter_opts, formatter_opts)})
+    opts = Keyword.put(opts || [], :formatter_opts, formatter_opts)
+
+    Source.filetype(source, %Ex{ex | opts: opts})
   end
 
   defp add_filetype(source, opts \\ nil) do
