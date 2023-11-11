@@ -8,6 +8,15 @@ defmodule Rewrite.Source.Ex do
 
   `Ex` extends the `source` by the key `:quoted`.
 
+  ## Updating and syncing `:quoted`
+
+  When `:quoted` becomes updated, content becomes formatted to the Elixir source
+  code. To keep the code in `:content` in sync with the AST in `:quoted`, the
+  new code is parsed to a new `:quoted`. That means that
+  `Source.update(source, :quoted, quoted)` also updates the AST.
+
+  The syncing of `:quoted` can be suppressed with the option `sync_quoted: false`.
+
   ## Examples
 
       iex> source = Source.Ex.from_string("Enum.reverse(list)")
@@ -31,15 +40,43 @@ defmodule Rewrite.Source.Ex do
          line: 1,
          column: 6
        ], [{:list, [trailing_comments: [], leading_comments: [], line: 1, column: 14], nil}]}
-      iex> quoted = quote(do: :foo)
+      iex> quoted = Code.string_to_quoted!("""
+      ...> defmodule MyApp.New do
+      ...>   def      foo do
+      ...>   :foo
+      ...> end
+      ...> end
+      ...> """)
       iex> source = Source.update(source, :quoted, quoted)
       iex> Source.updated?(source)
       true
       iex> Source.get(source, :content)
       """
-      :foo
+      defmodule MyApp.New do
+        def foo do
+          :foo
+        end
+      end
       """
+      iex> Source.get(source, :quoted) == quoted
+      false
 
+  Without syncing `:quoted`:
+
+      iex> project = Rewrite.new([{Source.Ex, sync_quoted: false}])
+      iex> path = "test/fixtures/source/simple.ex"
+      iex> project = Rewrite.read!(project, path)
+      iex> source = Rewrite.source!(project, path)
+      iex> quoted = Code.string_to_quoted!("""
+      ...> defmodule MyApp.New do
+      ...>   def      foo do
+      ...>   :foo
+      ...> end
+      ...> end
+      ...> """)
+      iex> source = Source.update(source, :quoted, quoted)
+      iex> Source.get(source, :quoted) == quoted
+      true
   '''
 
   alias Mix.Tasks.Format
@@ -48,12 +85,12 @@ defmodule Rewrite.Source.Ex do
   alias Sourceror.Zipper
 
   @enforce_keys [:quoted, :formatter]
-  defstruct [:quoted, :formatter, :formatter_opts]
+  defstruct [:quoted, :formatter, :opts]
 
   @type t :: %Ex{
           quoted: Macro.t(),
           formatter: (Macro.t() -> String.t()),
-          formatter_opts: nil | keyword()
+          opts: nil | keyword()
         }
 
   @behaviour Rewrite.Filetype
@@ -77,13 +114,20 @@ defmodule Rewrite.Source.Ex do
   @doc """
   Returns a `%Rewrite.Source{}` with an added `:filetype`.
 
-  The `content` is reading from the file under the given `path`.
+  The `content` reads from the file under the given `path`.
+
+  ## Options
+
+    * `:formatter_opts`, default: `[]` - additional formatter options.
+
+    * `sync_quoted`, default: `true` - forcing the re-parsing when the source
+      field `quoted` is updated.
   """
   @impl Rewrite.Filetype
-  def read!(path, formatter_opts \\ []) do
+  def read!(path, opts \\ []) do
     path
     |> Source.read!()
-    |> add_filetype(formatter_opts)
+    |> add_filetype(opts)
   end
 
   @impl Rewrite.Filetype
@@ -100,10 +144,22 @@ defmodule Rewrite.Source.Ex do
     if ex.quoted == quoted do
       []
     else
-      code = ex.formatter.(quoted, ex.formatter_opts)
+      {quoted, code} = update_quoted(ex, quoted)
 
       [content: code, filetype: %Ex{ex | quoted: quoted}]
     end
+  end
+
+  defp update_quoted(ex, quoted) do
+    code = ex.formatter.(quoted, formatter_opts(ex))
+
+    quoted =
+      case sync_quoted?(ex) do
+        true -> Sourceror.parse_string!(code)
+        false -> quoted
+      end
+
+    {quoted, code}
   end
 
   @impl Rewrite.Filetype
@@ -216,7 +272,7 @@ defmodule Rewrite.Source.Ex do
   def format(input, formatter_opts \\ nil)
 
   def format(%Source{filetype: %Ex{} = ex}, formatter_opts) do
-    ex.formatter.(ex.quoted, formatter_opts || ex.formatter_opts)
+    ex.formatter.(ex.quoted, formatter_opts || formatter_opts(ex))
   end
 
   def format(input, formatter_opts) when is_binary(input) do
@@ -233,17 +289,21 @@ defmodule Rewrite.Source.Ex do
   The formatter options are in use during updating and formatting.
   """
   @spec put_formatter_opts(Source.t(), keyword()) :: Source.t()
-  def put_formatter_opts(%Source{filetype: %Ex{} = ex} = source, formatter_opts) do
-    Source.filetype(source, %Ex{ex | formatter_opts: formatter_opts})
+  def put_formatter_opts(%Source{filetype: %Ex{opts: opts} = ex} = source, formatter_opts) do
+    opts = Keyword.put(opts || [], :formatter_opts, formatter_opts)
+
+    Source.filetype(source, %Ex{ex | opts: opts})
   end
 
   @doc """
   Merges the `formatter_opts` for a `source`.
   """
   @spec merge_formatter_opts(Source.t(), keyword()) :: Source.t()
-  def merge_formatter_opts(%Source{filetype: %Ex{} = ex} = source, formatter_opts) do
-    formatter_opts = Keyword.merge(ex.formatter_opts || [], formatter_opts)
-    Source.filetype(source, %Ex{ex | formatter_opts: formatter_opts})
+  def merge_formatter_opts(%Source{filetype: %Ex{opts: opts} = ex} = source, formatter_opts) do
+    formatter_opts = Keyword.merge(formatter_opts(ex), formatter_opts)
+    opts = Keyword.put(opts || [], :formatter_opts, formatter_opts)
+
+    Source.filetype(source, %Ex{ex | opts: opts})
   end
 
   defp add_filetype(source, opts \\ nil) do
@@ -251,7 +311,7 @@ defmodule Rewrite.Source.Ex do
       struct!(Ex,
         quoted: Sourceror.parse_string!(source.content),
         formatter: formatter(source.path, nil),
-        formatter_opts: opts
+        opts: opts
       )
 
     Source.filetype(source, ex)
@@ -368,4 +428,11 @@ defmodule Rewrite.Source.Ex do
   end
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
+
+  defp formatter_opts(%Ex{opts: nil}), do: []
+  defp formatter_opts(%Ex{opts: opts}), do: Keyword.get(opts, :formatter_opts, [])
+
+  defp sync_quoted?(%Ex{opts: nil}), do: true
+
+  defp sync_quoted?(%Ex{opts: opts}), do: Keyword.get(opts, :sync_quoted, true)
 end

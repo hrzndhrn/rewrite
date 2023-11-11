@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2023/11/11
+
++ Add option `:sync_quoted` to `Source.Ex`.
+
 ## 0.9.1 - 2023/10/07
 
 + Read and write files async.
