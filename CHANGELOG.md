@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 - 2024/04/02
+
++ Update sourceror version.
+
 ## 0.10.0 - 2023/11/11
 
 + Add option `:sync_quoted` to `Source.Ex`.
