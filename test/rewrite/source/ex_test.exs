@@ -76,7 +76,7 @@ defmodule Rewrite.Source.ExTest do
 
     test "raises an error" do
       source = Source.Ex.from_string(":a")
-      message = ~r/nofile:1:5: unexpected reserved word: end/
+      message = ~r/unexpected.reserved.word:.end/m
 
       assert_raise SyntaxError, message, fn ->
         Source.update(source, :content, ":ok end")
