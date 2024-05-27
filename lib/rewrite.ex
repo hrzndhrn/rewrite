@@ -648,10 +648,10 @@ defmodule Rewrite do
         [{"default", {Source, opts}}]
 
       {module, opts} ->
-        Enum.map(module.extensions, fn extension -> {extension, {module, opts}} end)
+        Enum.map(module.extensions(), fn extension -> {extension, {module, opts}} end)
 
       module ->
-        Enum.map(module.extensions, fn extension -> {extension, module} end)
+        Enum.map(module.extensions(), fn extension -> {extension, module} end)
     end)
     |> Map.new()
     |> Map.put_new("default", Source)
