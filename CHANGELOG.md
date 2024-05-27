@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 - 2024/05/27
+
++ Fix Elixir 1.17 deprecation warning.
+
 ## 0.10.1 - 2024/04/02
 
 + Update sourceror version.
