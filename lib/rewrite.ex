@@ -672,9 +672,10 @@ defmodule Rewrite do
     |> List.wrap()
     |> Enum.map(&compile_globs!/1)
     |> Enum.flat_map(&GlobEx.ls/1)
+    |> Enum.unique()
   end
 
-  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str)
+  defp compile_globs!(str) when is_binary(str), do: GlobEx.compile!(str, match_dot: true)
 
   defp compile_globs!(glob) when is_struct(glob, GlobEx), do: glob
 
