@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.3 - 2024/05/30
+
++ Include files starting with `.`.
+
 ## 0.10.2 - 2024/05/27
 
 + Fix Elixir 1.17 deprecation warning.
