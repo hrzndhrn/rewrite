@@ -607,7 +607,7 @@ defmodule Rewrite do
   ## Options
 
   + `exclude` - a list paths to exclude form writting.
-  + `foece`, default: `false` - forces the writting of unchanged files.
+  + `force`, default: `false` - forces the writting of unchanged files.
   """
   @spec write_all(t(), opts()) ::
           {:ok, t()} | {:error, [SourceError.t()], t()}
