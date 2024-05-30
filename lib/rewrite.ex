@@ -599,17 +599,15 @@ defmodule Rewrite do
   This function calls `Rewrite.Source.write/1` on all sources in the `rewrite`
   project.
 
-  Returns `{:ok, rewrite}` if all sources are written successful.
+  Returns `{:ok, rewrite}` if all sources are written successfully.
 
-  Returns `{:error, reasons, rewrite}` where rewrite is updated for all sources
-  that are written successful. The reasons is a keyword list with the keys
-  `File.posix()` or `:changed` and the affected path as value. The key
-  `:changed` indicates a file that was changed sind reading.
+  Returns `{:error, reasons, rewrite}` where `rewrite` is updated for all 
+  sources that are written successfully.
 
   ## Options
 
   + `exclude` - a list paths to exclude form writting.
-  + `foece`, default: `false` - forces the writting of changed files.
+  + `foece`, default: `false` - forces the writting of unchanged files.
   """
   @spec write_all(t(), opts()) ::
           {:ok, t()} | {:error, [SourceError.t()], t()}
