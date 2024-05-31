@@ -410,7 +410,7 @@ defmodule Rewrite.Source.Ex do
     end
   end
 
-  defp assert_valid_dep_and_fetch_path(_dep, _deps_paths) do
+  defp fetch_valid_dep_path(_dep, _deps_paths) do
     nil
   end
 
