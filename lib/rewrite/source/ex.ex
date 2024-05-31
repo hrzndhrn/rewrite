@@ -344,8 +344,12 @@ defmodule Rewrite.Source.Ex do
     formatter_opts = Keyword.put(formatter_opts, :plugins, plugins)
 
     fn quoted, opts ->
-      opts = update_formatter_opts(formatter_opts, opts)
-      code = Sourceror.to_string(quoted, opts)
+      opts =
+        formatter_opts
+        |> update_formatter_opts(opts)
+        |> eval_deps()
+
+      code = Sourceror.to_string(quoted, Keyword.take(opts, [:locals_without_parens]))
 
       code =
         opts
@@ -356,6 +360,69 @@ defmodule Rewrite.Source.Ex do
 
       String.trim_trailing(code, "\n") <> "\n"
     end
+  end
+
+  defp eval_deps(formatter_opts) do
+    deps = Keyword.get(formatter_opts, :import_deps, [])
+
+    locals_without_parens = eval_deps_opts(deps)
+
+    formatter_opts =
+      Keyword.update(
+        formatter_opts,
+        :locals_without_parens,
+        locals_without_parens,
+        &(locals_without_parens ++ &1)
+      )
+
+    formatter_opts
+  end
+
+  if Code.ensure_loaded?(Mix.Project) do
+    defp eval_deps_opts([]) do
+      []
+    end
+
+    defp eval_deps_opts(deps) do
+      deps_paths = Mix.Project.deps_paths()
+
+      for dep <- deps,
+          dep_path = assert_valid_dep_and_fetch_path(dep, deps_paths),
+          dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
+          File.regular?(dep_dot_formatter),
+          dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
+          parenless_call <- dep_opts[:export][:locals_without_parens] || [],
+          uniq: true,
+          do: parenless_call
+    end
+  else
+    defp eval_deps_opts(_), do: []
+  end
+
+  defp assert_valid_dep_and_fetch_path(dep, deps_paths) when is_atom(dep) do
+    with %{^dep => path} <- deps_paths,
+         true <- File.dir?(path) do
+      path
+    else
+      _ ->
+        raise "Unknown dependency #{inspect(dep)} given to :import_deps in the formatter configuration. " <>
+                "Make sure the dependency is listed in your mix.exs for environment #{inspect(Mix.env())} " <>
+                "and you have run \"mix deps.get\""
+    end
+  end
+
+  defp assert_valid_dep_and_fetch_path(dep, _deps_paths) do
+    raise "Dependencies in :import_deps should be atoms, got: #{inspect(dep)}"
+  end
+
+  defp eval_file_with_keyword_list(path) do
+    {opts, _} = Code.eval_file(path)
+
+    unless Keyword.keyword?(opts) do
+      raise "Expected #{inspect(path)} to return a keyword list, got: #{inspect(opts)}"
+    end
+
+    opts
   end
 
   defp update_formatter_opts(left, nil), do: left
