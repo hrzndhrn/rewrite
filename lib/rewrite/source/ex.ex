@@ -387,7 +387,8 @@ defmodule Rewrite.Source.Ex do
       deps_paths = Mix.Project.deps_paths()
 
       for dep <- deps,
-          dep_path = assert_valid_dep_and_fetch_path(dep, deps_paths),
+          dep_path = fetch_valid_dep_path(dep, deps_paths),
+          !is_nil(dep_path),
           dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
           File.regular?(dep_dot_formatter),
           dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
@@ -399,20 +400,18 @@ defmodule Rewrite.Source.Ex do
     defp eval_deps_opts(_), do: []
   end
 
-  defp assert_valid_dep_and_fetch_path(dep, deps_paths) when is_atom(dep) do
+  defp fetch_valid_dep_path(dep, deps_paths) when is_atom(dep) do
     with %{^dep => path} <- deps_paths,
          true <- File.dir?(path) do
       path
     else
       _ ->
-        raise "Unknown dependency #{inspect(dep)} given to :import_deps in the formatter configuration. " <>
-                "Make sure the dependency is listed in your mix.exs for environment #{inspect(Mix.env())} " <>
-                "and you have run \"mix deps.get\""
+        nil
     end
   end
 
-  defp assert_valid_dep_and_fetch_path(dep, _deps_paths) do
-    raise "Dependencies in :import_deps should be atoms, got: #{inspect(dep)}"
+  defp assert_valid_dep_and_fetch_path(_dep, _deps_paths) do
+    nil
   end
 
   defp eval_file_with_keyword_list(path) do
