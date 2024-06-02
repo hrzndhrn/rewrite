@@ -349,7 +349,7 @@ defmodule Rewrite.Source.Ex do
         |> update_formatter_opts(opts)
         |> eval_deps()
 
-      code = Sourceror.to_string(quoted, Keyword.take(opts, [:locals_without_parens]))
+      code = Sourceror.to_string(quoted, opts)
 
       code =
         opts
@@ -378,26 +378,22 @@ defmodule Rewrite.Source.Ex do
     formatter_opts
   end
 
-  if Code.ensure_loaded?(Mix.Project) do
-    defp eval_deps_opts([]) do
-      []
-    end
+  defp eval_deps_opts([]) do
+    []
+  end
 
-    defp eval_deps_opts(deps) do
-      deps_paths = Mix.Project.deps_paths()
+  defp eval_deps_opts(deps) do
+    deps_paths = Mix.Project.deps_paths()
 
-      for dep <- deps,
-          dep_path = fetch_valid_dep_path(dep, deps_paths),
-          !is_nil(dep_path),
-          dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
-          File.regular?(dep_dot_formatter),
-          dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
-          parenless_call <- dep_opts[:export][:locals_without_parens] || [],
-          uniq: true,
-          do: parenless_call
-    end
-  else
-    defp eval_deps_opts(_), do: []
+    for dep <- deps,
+        dep_path = fetch_valid_dep_path(dep, deps_paths),
+        !is_nil(dep_path),
+        dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
+        File.regular?(dep_dot_formatter),
+        dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
+        parenless_call <- dep_opts[:export][:locals_without_parens] || [],
+        uniq: true,
+        do: parenless_call
   end
 
   defp fetch_valid_dep_path(dep, deps_paths) when is_atom(dep) do
