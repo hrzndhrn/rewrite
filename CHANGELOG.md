@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.4 - 2024/06/03
+
++ Honor `import_deps` in `formatter_opts`.
+
 ## 0.10.3 - 2024/05/30
 
 + Include files starting with `.`.
