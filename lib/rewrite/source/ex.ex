@@ -344,7 +344,11 @@ defmodule Rewrite.Source.Ex do
     formatter_opts = Keyword.put(formatter_opts, :plugins, plugins)
 
     fn quoted, opts ->
-      opts = update_formatter_opts(formatter_opts, opts)
+      opts =
+        formatter_opts
+        |> update_formatter_opts(opts)
+        |> eval_deps()
+
       code = Sourceror.to_string(quoted, opts)
 
       code =
@@ -356,6 +360,64 @@ defmodule Rewrite.Source.Ex do
 
       String.trim_trailing(code, "\n") <> "\n"
     end
+  end
+
+  defp eval_deps(formatter_opts) do
+    deps = Keyword.get(formatter_opts, :import_deps, [])
+
+    locals_without_parens = eval_deps_opts(deps)
+
+    formatter_opts =
+      Keyword.update(
+        formatter_opts,
+        :locals_without_parens,
+        locals_without_parens,
+        &(locals_without_parens ++ &1)
+      )
+
+    formatter_opts
+  end
+
+  defp eval_deps_opts([]) do
+    []
+  end
+
+  defp eval_deps_opts(deps) do
+    deps_paths = Mix.Project.deps_paths()
+
+    for dep <- deps,
+        dep_path = fetch_valid_dep_path(dep, deps_paths),
+        !is_nil(dep_path),
+        dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
+        File.regular?(dep_dot_formatter),
+        dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
+        parenless_call <- dep_opts[:export][:locals_without_parens] || [],
+        uniq: true,
+        do: parenless_call
+  end
+
+  defp fetch_valid_dep_path(dep, deps_paths) when is_atom(dep) do
+    with %{^dep => path} <- deps_paths,
+         true <- File.dir?(path) do
+      path
+    else
+      _ ->
+        nil
+    end
+  end
+
+  defp fetch_valid_dep_path(_dep, _deps_paths) do
+    nil
+  end
+
+  defp eval_file_with_keyword_list(path) do
+    {opts, _} = Code.eval_file(path)
+
+    unless Keyword.keyword?(opts) do
+      raise "Expected #{inspect(path)} to return a keyword list, got: #{inspect(opts)}"
+    end
+
+    opts
   end
 
   defp update_formatter_opts(left, nil), do: left
