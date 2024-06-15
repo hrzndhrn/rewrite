@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.5 - 2024/06/15
+
++ Use file extension when filtering the formatter plugins.
+
 ## 0.10.4 - 2024/06/03
 
 + Honor `import_deps` in `formatter_opts`.
