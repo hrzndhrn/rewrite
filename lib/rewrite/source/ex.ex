@@ -346,7 +346,7 @@ defmodule Rewrite.Source.Ex do
     fn quoted, opts ->
       opts =
         formatter_opts
-        |> update_formatter_opts(opts)
+        |> update_formatter_opts(opts, ext)
         |> eval_deps()
 
       code = Sourceror.to_string(quoted, opts)
@@ -420,12 +420,13 @@ defmodule Rewrite.Source.Ex do
     opts
   end
 
-  defp update_formatter_opts(left, nil), do: left
+  defp update_formatter_opts(left, nil, _ext), do: left
 
-  defp update_formatter_opts(left, right) do
+  defp update_formatter_opts(left, right, ext) do
     left
     |> Keyword.merge(right)
     |> exclude_plugins()
+    |> filter_plugins(ext)
     |> update_quoted_to_algebra()
   end
 
@@ -434,6 +435,10 @@ defmodule Rewrite.Source.Ex do
       true -> do_exclude_plugins(opts)
       false -> opts
     end
+  end
+
+  defp filter_plugins(opts, ext) do
+    Keyword.put(opts, :plugins, plugins_for_ext(opts, ext))
   end
 
   defp do_exclude_plugins(opts) do

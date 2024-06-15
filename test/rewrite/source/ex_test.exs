@@ -194,7 +194,7 @@ defmodule Rewrite.Source.ExTest do
 
       source =
         ":a"
-        |> Source.Ex.from_string(":a")
+        |> Source.Ex.from_string("a.ex")
         |> Source.Ex.put_formatter_opts(plugins: plugins)
         |> Source.Ex.merge_formatter_opts(exclude_plugins: exclude)
 
