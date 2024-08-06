@@ -33,6 +33,22 @@ defmodule Rewrite.Source do
 
   @type opts :: keyword()
 
+  # TODO: use the new timestamps type
+  @typedoc """
+  The timestamps are integers in POSIX time format.
+
+  The `source` timestamp is the timestamp of the last modification of the file 
+  on disk at the time it was read.
+
+  If the `source` was created by a `string`, the timestamp contains the creation 
+  time.
+
+  The `update` timestamp holds the time of the last update of the `source`. If
+  the `source` was not updated the `update` timestamp is the same as the 
+  `source`.
+  """
+  @type timestamps :: {source :: integer(), update :: integer()}
+
   @typedoc """
   The `version` of a `%Source{}`. The version `1` indicates that the source has
   no changes.
