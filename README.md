@@ -16,7 +16,7 @@ dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:rewrite, "~> 0.9"}
+    {:rewrite, "~> 1.0"}
   ]
 end
 ```

@@ -1,7 +1,7 @@
 defmodule Rewrite.MixProject do
   use Mix.Project
 
-  @version "0.10.5"
+  @version "1.0.0"
   @source_url "https://github.com/hrzndhrn/rewrite"
 
   def project do
@@ -36,8 +36,16 @@ defmodule Rewrite.MixProject do
 
   defp docs do
     [
+      main: Rewrite,
       source_ref: "v#{@version}",
-      formatters: ["html"]
+      formatters: ["html"],
+      api_reference: false,
+      groups_for_modules: [
+        Hooks: [
+          Rewrite.Hook,
+          Rewrite.Hook.DotFormatterUpdater
+        ]
+      ]
     ]
   end
 
@@ -71,6 +79,7 @@ defmodule Rewrite.MixProject do
     [
       {:glob_ex, "~> 0.1"},
       {:sourceror, "~> 1.0"},
+      {:text_diff, "~> 0.1"},
       # dev/test
       {:benchee_dsl, "~> 0.5", only: :dev},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},

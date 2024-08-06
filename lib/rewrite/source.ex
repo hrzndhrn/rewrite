@@ -13,9 +13,8 @@ defmodule Rewrite.Source do
   A source is extensible via `filetype`, see `Rewrite.Filetype`.
   """
 
+  alias Rewrite.DotFormatter
   alias Rewrite.Source
-  alias Rewrite.TextDiff
-
   alias Rewrite.SourceError
   alias Rewrite.SourceKeyError
 
@@ -26,12 +25,18 @@ defmodule Rewrite.Source do
     :hash,
     :owner,
     :filetype,
+    :timestamp,
     history: [],
     issues: [],
     private: %{}
   ]
 
   @type opts :: keyword()
+
+  @typedoc """
+  A `timestamp` as `integer` seconds since epoch.
+  """
+  @type timestamp :: integer()
 
   @typedoc """
   The `version` of a `%Source{}`. The version `1` indicates that the source has
@@ -45,17 +50,54 @@ defmodule Rewrite.Source do
   @type owner :: module()
 
   @type key :: atom()
-  @type value :: any()
+  @type value :: term()
+  @type updater :: (term() -> term())
 
   @type content :: String.t()
   @type extension :: String.t()
 
   @type from :: :file | :string
 
-  @type issue :: any()
+  @type issue :: term()
 
   @type filetype :: map()
 
+  @typedoc """
+  The `struct` representing a source.
+
+  ## Fields
+
+    * `content` - of the `source`.
+
+    * `filetype` - a `struct` implementing the behaviour `Rewrite.Filetype`.
+      The `filetype` is nil when no additional implementation for the `filetype`
+      is available.
+
+    * `from` - contains `:file` or `:string` depending on whether the `source`
+      is created from a file or a string.
+
+    * `hash` - of the `source`. The `hash` is built from the `content` and 
+      `path`.
+
+    * `history` - of the `source`.
+
+    * `issues` - of the `source`.
+
+    * `owner` - of the `source`.
+
+    * `path` - of the `source`. Can be `nil` if the `source` was created by a 
+      `string`.
+
+    * `private` - a field for user defined data.
+
+    * `timestamp` - is set to the timestamp of the last modification of the file 
+      on disk at the time it was read.
+
+      If the `source` was created by a `string`, the timestamp is the creation 
+      time.
+
+      The timestamp will be updated when the `source` is updated.
+  """
   @type t :: %Source{
           path: Path.t() | nil,
           content: String.t(),
@@ -63,6 +105,7 @@ defmodule Rewrite.Source do
           history: [{kind(), by(), String.t()}],
           issues: [{version(), issue()}],
           filetype: filetype(),
+          timestamp: timestamp(),
           from: from(),
           owner: owner(),
           private: map()
@@ -82,13 +125,21 @@ defmodule Rewrite.Source do
   @spec read!(Path.t(), opts) :: t()
   def read!(path, opts \\ []) do
     content = File.read!(path)
+    mtime = File.stat!(path, time: :posix).mtime
     owner = Keyword.get(opts, :owner, Rewrite)
-    new(content: content, path: path, owner: owner, from: :file)
+
+    new(
+      content: content,
+      path: path,
+      owner: owner,
+      from: :file,
+      timestamp: mtime
+    )
   end
 
   defp new(fields) do
     content = Keyword.fetch!(fields, :content)
-    path = Keyword.get(fields, :path, nil)
+    path = Keyword.get(fields, :path)
 
     struct!(
       Source,
@@ -96,24 +147,49 @@ defmodule Rewrite.Source do
       from: Keyword.fetch!(fields, :from),
       hash: hash(path, content),
       owner: Keyword.get(fields, :owner, Rewrite),
-      path: Keyword.get(fields, :path, nil)
+      path: path,
+      timestamp: Keyword.fetch!(fields, :timestamp)
     )
   end
 
   @doc """
   Creates a new `%Source{}` from the given `string`.
 
+  ## Options
+
+    * `:owner` - an association to the module that owns the `source`. 
+
+    * `:dot_formatter` - a fromatter for the `source`.
+
+    * `path` - the path of the `source`.
+
   ## Examples
 
       iex> source = Source.from_string("hello")
       iex> source.content
       "hello"
-  """
-  @spec from_string(String.t(), Path.t() | nil, opts()) :: t()
-  def from_string(content, path \\ nil, opts \\ []) do
-    owner = Keyword.get(opts, :owner, Rewrite)
+      iex> source.path
+      nil
+      iex> source.owner
+      Rewrite
 
-    new(content: content, path: path, owner: owner, from: :string)
+      iex> source = Source.from_string("hello", path: "hello.md", owner: MyApp)
+      iex> source.path
+      "hello.md"
+      iex> source.owner
+      MyApp
+
+  """
+  @spec from_string(String.t(), opts()) :: t()
+  def from_string(content, opts \\ []) when is_list(opts) do
+    new(
+      content: content,
+      path: Keyword.get(opts, :path),
+      owner: Keyword.get(opts, :owner, Rewrite),
+      from: :string,
+      timestamp: now(),
+      dot_formatter: Keyword.get(opts, :dot_formatter)
+    )
   end
 
   @doc ~S"""
@@ -138,6 +214,7 @@ defmodule Rewrite.Source do
   ## Options
 
     * `:force`, default: `false` - forces the saving to overwrite changed files.
+
     * `:rm`, default: `true` - prevents file deletion when set to `false`.
 
   ## Examples
@@ -297,6 +374,8 @@ defmodule Rewrite.Source do
   Adds the given `issues` to the `source`.
   """
   @spec add_issues(t(), [issue()]) :: t()
+  def add_issues(%Source{} = source, []), do: source
+
   def add_issues(%Source{issues: list} = source, issues) do
     version = version(source)
     issues = issues |> Enum.map(fn issue -> {version, issue} end) |> Enum.concat(list)
@@ -335,7 +414,7 @@ defmodule Rewrite.Source do
       iex> source.private[:origin]
       :example
   """
-  @spec put_private(t(), key :: any(), value()) :: t()
+  @spec put_private(t(), key(), value()) :: t()
   def put_private(%Source{} = source, key, value) do
     Map.update!(source, :private, &Map.put(&1, key, value))
   end
@@ -343,50 +422,76 @@ defmodule Rewrite.Source do
   @doc ~S"""
   Updates the `content` or the `path` of a `source`.
 
+  The given `value` can be of type `t:value/0` or an updater function that gets
+  the current value and returns the new value.
+
   ## Examples
 
       iex> source =
       ...>   "foo"
       ...>   |> Source.from_string()
-      ...>   |> Source.update(Example, :path, "test/fixtures/new.exs")
+      ...>   |> Source.update(:path, "test/fixtures/new.exs", by: Example)
       ...>   |> Source.update(:content, "bar")
       iex> source.history
       [{:content, Rewrite, "foo"}, {:path, Example, nil}]
       iex> source.content
       "bar"
 
+      iex> source =
+      ...>   "foo"
+      ...>   |> Source.from_string()
+      ...>   |> Source.update(:content, fn content -> content <> "bar" end)
+      iex> source.content
+      "foobar"
+
+  With a `Rewrite.Source.Ex`. Note that the AST is generated by `Sourceror`.
+
+      iex> source =
+      ...>   ":a"
+      ...>   |> Source.Ex.from_string()
+      ...>   |> Source.update(:quoted, fn quoted ->
+      ...>     {:__block__, meta, [atom]} = quoted 
+      ...>     {:__block__, meta, [{:ok, atom}]}
+      ...>   end)
+      iex> source.content
+      "{:ok, :a}\n"
+
   If the new value is equal to the current value, no history will be added.
 
       iex> source =
       ...>   "42"
       ...>   |> Source.from_string()
-      ...>   |> Source.update(Example, :content, "21")
-      ...>   |> Source.update(Example, :content, "21")
-      ...>   |> Source.update(Example, :content, "21")
+      ...>   |> Source.update(:content, "21", by: Example)
+      ...>   |> Source.update(:content, "21", by: Example)
       iex> source.history
       [{:content, Example, "42"}]
   """
-  @spec update(Source.t(), by(), key(), value()) :: Source.t()
-  def update(source, by \\ Rewrite, key, value)
+  @spec update(Source.t(), key(), value() | updater(), opts()) :: Source.t()
+  def update(source, key, value, opts \\ [])
 
-  def update(%Source{} = source, by, key, value)
-      when is_atom(by) and key in [:content, :path] do
+  def update(%Source{} = source, key, value, opts)
+      when key in [:content, :path] and is_list(opts) do
     legacy = Map.fetch!(source, key)
+    value = value(value, legacy)
 
     case legacy == value do
       true ->
         source
 
       false ->
+        by = Keyword.get(opts, :by, Rewrite)
+
         source
+        |> update_timestamp()
         |> do_update(key, value)
         |> update_history(key, by, legacy)
-        |> update_filetype(key)
+        |> update_filetype(key, opts)
     end
   end
 
-  def update(%Source{filetype: %module{}} = source, by, key, value) when is_atom(key) do
-    updates = module.handle_update(source, key, value)
+  def update(%Source{filetype: %module{}} = source, key, value, opts)
+      when is_atom(key) and is_list(opts) do
+    updates = module.handle_update(source, key, value, opts)
 
     case updates do
       [] ->
@@ -395,12 +500,19 @@ defmodule Rewrite.Source do
       updates ->
         filetype = Keyword.get(updates, :filetype, source.filetype)
         content = Keyword.get(updates, :content, source.content)
+        by = Keyword.get(opts, :by, Rewrite)
 
         source
         |> Map.put(:filetype, filetype)
         |> update_content(content, by)
+        |> update_timestamp()
     end
   end
+
+  defp value(updater, legacy) when is_function(updater, 1), do: updater.(legacy)
+  defp value(value, _legacy), do: value
+
+  defp update_timestamp(source), do: %{source | timestamp: now()}
 
   defp do_update(source, :path, path) do
     %Source{source | path: path}
@@ -410,10 +522,10 @@ defmodule Rewrite.Source do
     %Source{source | content: content}
   end
 
-  defp update_filetype(%{filetype: nil} = source, _key), do: source
+  defp update_filetype(%{filetype: nil} = source, _key, _opts), do: source
 
-  defp update_filetype(%{filetype: %module{}} = source, key) when is_atom(key) do
-    filetype = module.handle_update(source, key)
+  defp update_filetype(%{filetype: %module{}} = source, key, opts) when is_atom(key) do
+    filetype = module.handle_update(source, key, opts)
 
     %Source{source | filetype: filetype}
   end
@@ -433,6 +545,22 @@ defmodule Rewrite.Source do
         |> update_history(:content, by, legacy)
     end
   end
+
+  @doc """
+  Sets the `timestamp` to the current POSIX timestamp.
+
+  Does not touch the underlying file.
+  """
+  @spec touch(t()) :: t()
+  def touch(source), do: touch(source, now())
+
+  @doc """
+  Sets the `timestamp` of the given `source` to the given `timestamp`.
+
+  Does not touch the underlying file.
+  """
+  @spec touch(t(), timestamp()) :: t()
+  def touch(source, timestamp), do: %{source | timestamp: timestamp}
 
   @doc """
   Returns `true` if the source was updated.
@@ -517,7 +645,7 @@ defmodule Rewrite.Source do
 
       iex> source =
       ...>   "a + b"
-      ...>   |> Source.Ex.from_string("some/where/plus.exs")
+      ...>   |> Source.Ex.from_string(path: "some/where/plus.exs")
       ...>   |> Source.add_issue(%{issue: :foo})
       ...>   |> Source.update(:path, "some/where/else/plus.exs")
       ...>   |> Source.add_issue(%{issue: :bar})
@@ -604,7 +732,7 @@ defmodule Rewrite.Source do
 
       iex> source =
       ...>   "hello"
-      ...>   |> Source.from_string("some/where/hello.txt")
+      ...>   |> Source.from_string(path: "some/where/hello.txt")
       ...>   |> Source.update(:path, "some/where/else/hello.txt")
       ...> Source.get(source, :path, 1)
       "some/where/hello.txt"
@@ -640,7 +768,7 @@ defmodule Rewrite.Source do
   @doc ~S'''
   Returns iodata showing all diffs of the given `source`.
 
-  See `Rewrite.TextDiff.format/3` for options.
+  See `TextDiff.format/3` for options.
 
   ## Examples
 
@@ -677,19 +805,9 @@ defmodule Rewrite.Source do
     )
   end
 
-  @doc ~S'''
+  @doc """
   Calculates the current hash from the given `source`.
-
-  ## Examples
-
-      iex> source = Source.from_string("""
-      ...> defmodule Foo do
-      ...>   def bar, do: :bar
-      ...> end
-      ...> """)
-      iex> Source.hash(source)
-      <<76, 24, 5, 252, 117, 230, 0, 217, 129, 150, 68, 248, 6, 48, 72, 46>>
-  '''
+  """
   @spec hash(t()) :: binary()
   def hash(%Source{path: path, content: content}), do: hash(path, content)
 
@@ -717,7 +835,7 @@ defmodule Rewrite.Source do
   Undoes the given `number` of changes.
 
   ## Examples
-      iex> a = Source.from_string("test-a", "test/foo.txt")
+      iex> a = Source.from_string("test-a", path: "test/foo.txt")
       iex> b = Source.update(a, :content, "test-b")
       iex> c = Source.update(b, :path, "test/bar.txt")
       iex> d = Source.update(c, :content, "test-d")
@@ -755,9 +873,81 @@ defmodule Rewrite.Source do
     undo(source, number - 1)
   end
 
-  defp hash(nil, code), do: :crypto.hash(:md5, code)
+  @doc ~s'''
+  Formats the given `source`.
 
-  defp hash(path, code), do: :crypto.hash(:md5, path <> code)
+  If the `source` was formatted the `source` gets a new `:history` entry, 
+  otherwise the unchanged `source` is returned.
+
+  ## Options
+
+    * `by` - an `atom` or `module` that is used as `:by` key when the `source`
+      is updated. Defaults to `Rewrite`.
+
+    * `dot_formatter` - defaults to `Rewrite.DotFormatter.default/0`.
+
+    * Accepts also the same options as `Code.format_string!/2`. 
+    
+  ## Examples
+
+      
+      iex> source = Source.Ex.from_string("""
+      ...> defmodule    Foo do
+      ...>     def   foo(x),   do:    bar x
+      ...>    end
+      ...> """)
+      iex> {:ok, formatted} = Source.format(source, force_do_end_blocks: true)
+      iex> formatted.content
+      """
+      defmodule Foo do
+        def foo(x) do
+          bar(x)
+        end
+      end
+      """
+      iex> dot_formatter = DotFormatter.from_formatter_opts(locals_without_parens: [bar: 1])
+      iex> {:ok, formatted} = Source.format(source, 
+      ...>   dot_formatter: dot_formatter, force_do_end_blocks: true
+      ...> )
+      iex> formatted.content
+      """
+      defmodule Foo do
+        def foo(x) do
+          bar x
+        end
+      end
+      """
+  '''
+  @spec format(t(), opts()) :: {:ok, t()} | {:errror, term()}
+  def format(%Source{} = source, opts \\ []) do
+    path = Map.get(source, :path) || default_path(source)
+    dot_fromatter = Keyword.get(opts, :dot_formatter, DotFormatter.default())
+    by = Keyword.get(opts, :by, Rewrite)
+
+    with {:ok, formatted} <- DotFormatter.format_string(dot_fromatter, path, source.content, opts) do
+      {:ok, update(source, :content, formatted, by: by)}
+    end
+  end
+
+  @doc """
+  Same as `format/2`, but raises an exception in case of failure.
+  """
+  @spec format(t(), opts()) :: t()
+  def format!(%Source{} = source, opts \\ []) do
+    case format(source, opts) do
+      {:ok, source} -> source
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  The default `path` for the `source`.
+  """
+  @spec default_path(t()) :: Path.t()
+  def default_path(%Source{filetype: %module{}}), do: module.default_path()
+  def default_path(_source), do: "nofile"
+
+  defp hash(path, code), do: :erlang.phash2({path, code})
 
   defp update_history(%Source{history: history} = source, key, by, legacy) do
     %{source | history: [{key, by, legacy} | history]}
@@ -766,4 +956,12 @@ defmodule Rewrite.Source do
   defp not_empty?(enum), do: not Enum.empty?(enum)
 
   defp eof_newline(string), do: String.trim_trailing(string) <> "\n"
+
+  defp now, do: DateTime.utc_now() |> DateTime.to_unix()
+
+  defimpl Inspect do
+    def inspect(source, _opts) do
+      "#Rewrite.Source<#{source.path}>"
+    end
+  end
 end

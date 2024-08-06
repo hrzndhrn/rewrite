@@ -5,7 +5,10 @@ defmodule Rewrite.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [{Task.Supervisor, name: Rewrite.TaskSupervisor}]
+    children = [
+      {Task.Supervisor, name: Rewrite.TaskSupervisor}
+    ]
+
     opts = [strategy: :one_for_one, name: Rewrite.Supervisor]
 
     Supervisor.start_link(children, opts)
