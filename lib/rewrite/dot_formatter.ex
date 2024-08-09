@@ -346,7 +346,7 @@ defmodule Rewrite.DotFormatter do
           acc
         else
           if source_path do
-            [{file, formatter, source_path(dot_formatter)} | acc]
+            [{file, source_path(dot_formatter)} | acc]
           else
             [{file, formatter} | acc]
           end
@@ -359,38 +359,72 @@ defmodule Rewrite.DotFormatter do
   end
 
   defp do_expand(%DotFormatter{} = dot_formatter, project, opts) do
-    formatter_opts = formatter_opts(dot_formatter)
     identity_formatters = Keyword.get(opts, :identity_formatters, false)
     source_path = Keyword.get(opts, :source_path, false)
 
-    list =
-      Enum.reduce(project, [], fn source, acc ->
-        case dot_formatter_for_file(dot_formatter, source.path) do
-          nil ->
-            acc
+    Enum.reduce(project, [], fn source, acc ->
+      case dot_formatters_for_file(dot_formatter, source.path) do
+        [] ->
+          acc
 
-          dot_formatter ->
+        dot_formatters ->
+          dot_formatters
+          |> Enum.map(fn dot_formatter ->
+            formatter_opts = formatter_opts(dot_formatter)
             formatter = formatter(dot_formatter, formatter_opts, source.path)
 
             if !identity_formatters && formatter == (&Function.identity/1) do
               acc
             else
               if source_path do
-                [{source.path, formatter, source_path(dot_formatter)} | acc]
+                {source.path, source_path(dot_formatter)}
               else
-                [{source.path, formatter} | acc]
+                {source.path, formatter}
               end
             end
-        end
-      end)
-
-    Enum.reduce(dot_formatter.subs, list, fn sub, acc ->
-      do_expand(sub, project, opts) ++ acc
+          end)
+          |> Enum.concat(acc)
+      end
     end)
   end
 
-  # TODO: implement check for conflicts
-  def check_conflict, do: :todo
+  def conflicts(dot_formatter \\ nil, project \\ nil)
+
+  def conflicts(nil, nil) do
+    with {:ok, dot_formatter} <- eval() do
+      conflicts(dot_formatter, nil)
+    end
+  end
+
+  def conflicts(%Rewrite{} = project, nil) do
+    with {:ok, dot_formatter} <- eval(project) do
+      conflicts(dot_formatter, project)
+    end
+  end
+
+  def conflicts(%DotFormatter{} = dot_formatter, nil) do
+    dot_formatter
+    |> expand(source_path: true)
+    |> do_conflicts()
+  end
+
+  def conflicts(%DotFormatter{} = dot_formatter, %Rewrite{} = project) do
+    dot_formatter
+    |> expand(project, source_path: true)
+    |> do_conflicts()
+  end
+
+  defp do_conflicts(expanded) do
+    expanded
+    |> Enum.group_by(
+      fn {path, _dot_formatter_path} -> path end,
+      fn {_path, dot_formatter_path} -> dot_formatter_path end
+    )
+    |> Enum.filter(fn {_path, dot_formatter_paths} ->
+      length(dot_formatter_paths) > 1
+    end)
+  end
+
   #   result =
   #     Enum.reduce_while(expanded, %{}, fn {path, formatter, dot_formatter_path}, acc ->
   #       if Map.has_key?(acc, path) do
@@ -410,6 +444,7 @@ defmodule Rewrite.DotFormatter do
   #     _else -> {:ok, expanded}
   #   end
   # end
+  # end
 
   defp source_path(%DotFormatter{path: path, source: source}), do: Path.join(path, source)
 
@@ -426,17 +461,18 @@ defmodule Rewrite.DotFormatter do
   end
 
   def formatter_for_file(dot_formatter, file, opts) do
-    case dot_formatter_for_file(dot_formatter, file) do
-      nil ->
-        :error
-
-      dot_formatter ->
+    case dot_formatters_for_file(dot_formatter, file) do
+      [dot_formatter] ->
         formatter_opts = Keyword.merge(formatter_opts(dot_formatter), opts)
         {:ok, formatter(dot_formatter, formatter_opts, file)}
+
+      _dot_formatters ->
+        # TODO: error handling
+        {:error, :todo}
     end
   end
 
-  defp dot_formatter_for_file(dot_formatter, file) do
+  defp dot_formatters_for_file(dot_formatter, file, acc \\ []) do
     match? =
       dot_formatter.inputs
       |> List.wrap()
@@ -444,11 +480,17 @@ defmodule Rewrite.DotFormatter do
         GlobEx.match?(glob, file)
       end)
 
-    if match? do
-      dot_formatter
-    else
-      Enum.find(dot_formatter.subs, fn sub -> dot_formatter_for_file(sub, file) end)
-    end
+    acc = if match?, do: [dot_formatter | acc], else: acc
+
+    Enum.reduce(dot_formatter.subs, acc, fn sub, acc ->
+      dot_formatters_for_file(sub, file, acc)
+    end)
+
+    # if match? do
+    #   dot_formatter
+    # else
+    #   Enum.find(dot_formatter.subs, fn sub -> dot_formatters_for_file(sub, file) end)
+    # end
   end
 
   defp formatter(dot_formatter, formatter_opts, file) do

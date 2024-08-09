@@ -785,14 +785,15 @@ defmodule Rewrite.DotFormatterTest do
         }
 
         assert DotFormatter.format() == {:error, error}
+
         assert Exception.message(error) == """
-        Format errors - \
-        Not formatted: [], \
-        Exits: [{"a.ex", %SyntaxError{\
-        file: "a.ex", line: 1, column: 13, \
-        snippet: "defmodule <%= module %>.Bar do end", \
-        description: "syntax error before: '='"}}]\
-        """
+               Format errors - \
+               Not formatted: [], \
+               Exits: [{"a.ex", %SyntaxError{\
+               file: "a.ex", line: 1, column: 13, \
+               snippet: "defmodule <%= module %>.Bar do end", \
+               description: "syntax error before: '='"}}]\
+               """
       end
     end
 
@@ -1090,6 +1091,62 @@ defmodule Rewrite.DotFormatterTest do
     end
   end
 
+  describe "conflicts/2" do
+    test "returns an empty list", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [subdirectories: ["li", "lib"]]
+          """,
+          "li/.formatter.exs" => """
+          [inputs: "**/*"]
+          """,
+          "lib/.formatter.exs" => """
+          [inputs: "a.ex"]
+          """,
+          "lib/a.ex" => """
+          # comment
+          """,
+          "li/a.ex" => """
+          # comment
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*")
+
+        assert DotFormatter.conflicts() == []
+        assert DotFormatter.conflicts(rewrite) == []
+      end
+    end
+
+    test "returns a list of conflicts", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [inputs: "lib/**/*.{ex,exs}", subdirectories: ["lib", "foo"]]
+          """,
+          "lib/.formatter.exs" => """
+          [inputs: "a.ex", locals_without_parens: [my_fun: 2]]
+          """,
+          "foo/.formatter.exs" => """
+          [inputs: "../lib/a.ex", locals_without_parens: [my_fun: 2]]
+          """,
+          "lib/a.ex" => """
+          my_fun :foo, :bar
+          other_fun :baz
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*")
+
+        # assert DotFormatter.conflicts() ==  [{"lib/a.ex", ["lib/.formatter.exs", ".formatter.exs"]}]
+        assert DotFormatter.conflicts(rewrite) == [
+                 {"lib/a.ex", ["lib/.formatter.exs", ".formatter.exs"]}
+               ]
+      end
+    end
+  end
+
   describe "formatter_for_file/2" do
     test "uses exported configuration from subdirectories", context do
       in_tmp context do
@@ -1116,7 +1173,7 @@ defmodule Rewrite.DotFormatterTest do
         assert formatter.("other_fun  1,  2") == "other_fun(1, 2)\n"
         assert formatter.("my_fun   1") == "my_fun 1\n"
 
-        assert DotFormatter.formatter_for_file("lib/extra/a.ex") == :error
+        assert DotFormatter.formatter_for_file("lib/extra/a.ex") == {:error, :todo}
       end
     end
 
@@ -1144,7 +1201,7 @@ defmodule Rewrite.DotFormatterTest do
       assert {:ok, formatter} = DotFormatter.formatter_for_file(dot_formatter, "li/extra/a.ex")
       assert formatter.("other_fun  1,  2") == "other_fun 1, 2\n"
 
-      assert DotFormatter.formatter_for_file(dot_formatter, "lib/extra/a.ex") == :error
+      assert DotFormatter.formatter_for_file(dot_formatter, "lib/extra/a.ex") == {:error, :todo}
 
       assert {:ok, formatter} =
                DotFormatter.formatter_for_file(
