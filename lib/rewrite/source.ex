@@ -26,6 +26,7 @@ defmodule Rewrite.Source do
     :hash,
     :owner,
     :filetype,
+    :timestamp,
     history: [],
     issues: [],
     private: %{}
@@ -48,6 +49,19 @@ defmodule Rewrite.Source do
   `source`.
   """
   @type timestamps :: {source :: integer(), update :: integer()}
+
+  @typedoc """
+  The timestamp is an integer in POSIX time format.
+
+  The timestamp is set to the timestamp of the last modification of the file 
+  on disk at the time it was read.
+
+  If the `source` was created by a `string`, the timestamp is the creation 
+  time.
+
+  The timestamp will be updated when the `source` is updated.
+  """
+  @type timestamp :: integer()
 
   @typedoc """
   The `version` of a `%Source{}`. The version `1` indicates that the source has
@@ -79,6 +93,7 @@ defmodule Rewrite.Source do
           history: [{kind(), by(), String.t()}],
           issues: [{version(), issue()}],
           filetype: filetype(),
+          timestamp: timestamp(),
           from: from(),
           owner: owner(),
           private: map()
@@ -98,8 +113,16 @@ defmodule Rewrite.Source do
   @spec read!(Path.t(), opts) :: t()
   def read!(path, opts \\ []) do
     content = File.read!(path)
+    mtime = File.stat!(path, time: :posix).mtime
     owner = Keyword.get(opts, :owner, Rewrite)
-    new(content: content, path: path, owner: owner, from: :file)
+
+    new(
+      content: content,
+      path: path,
+      owner: owner,
+      from: :file,
+      timestamp: mtime
+    )
   end
 
   defp new(fields) do
@@ -112,7 +135,8 @@ defmodule Rewrite.Source do
       from: Keyword.fetch!(fields, :from),
       hash: hash(path, content),
       owner: Keyword.get(fields, :owner, Rewrite),
-      path: Keyword.get(fields, :path, nil)
+      path: Keyword.get(fields, :path, nil),
+      timestamp: Keyword.fetch!(fields, :timestamp)
     )
   end
 
@@ -129,7 +153,7 @@ defmodule Rewrite.Source do
   def from_string(content, path \\ nil, opts \\ []) do
     owner = Keyword.get(opts, :owner, Rewrite)
 
-    new(content: content, path: path, owner: owner, from: :string)
+    new(content: content, path: path, owner: owner, from: :string, timestamp: now())
   end
 
   @doc ~S"""
@@ -395,6 +419,7 @@ defmodule Rewrite.Source do
 
       false ->
         source
+        |> update_timestamp()
         |> do_update(key, value)
         |> update_history(key, by, legacy)
         |> update_filetype(key)
@@ -415,8 +440,11 @@ defmodule Rewrite.Source do
         source
         |> Map.put(:filetype, filetype)
         |> update_content(content, by)
+        |> update_timestamp()
     end
   end
+
+  defp update_timestamp(source), do: %{source | timestamp: now()}
 
   defp do_update(source, :path, path) do
     %Source{source | path: path}
@@ -449,6 +477,22 @@ defmodule Rewrite.Source do
         |> update_history(:content, by, legacy)
     end
   end
+
+  @doc """
+  Sets the `timestamp` to the current POSIX timestamp.
+
+  Does not touch the underlying file.
+  """
+  @spec touch(t()) :: t()
+  def touch(source), do: touch(source, now())
+
+  @doc """
+  Sets the `timestamp` of the given `source` to the given `timestamp`.
+
+  Does not touch the underlying file.
+  """
+  @spec touch(t(), timestamp()) :: t()
+  def touch(source, timestamp), do: %{source | timestamp: timestamp}
 
   @doc """
   Returns `true` if the source was updated.
@@ -782,4 +826,6 @@ defmodule Rewrite.Source do
   defp not_empty?(enum), do: not Enum.empty?(enum)
 
   defp eof_newline(string), do: String.trim_trailing(string) <> "\n"
+
+  defp now, do: DateTime.utc_now() |> DateTime.to_unix()
 end

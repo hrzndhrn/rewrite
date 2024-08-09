@@ -185,26 +185,28 @@ defmodule RewriteTest do
 
   describe "from_sources/1" do
     test "creates a project" do
-      assert Rewrite.from_sources([
-               Source.from_string("b", "b.txt")
-             ]) ==
-               {:ok,
-                %Rewrite{
-                  extensions: %{"default" => Source, ".ex" => Source.Ex, ".exs" => Source.Ex},
-                  sources: %{
-                    "b.txt" => %Source{
-                      from: :string,
-                      path: "b.txt",
-                      content: "b",
-                      hash:
-                        <<174, 49, 163, 166, 58, 86, 116, 125, 28, 58, 67, 31, 0, 34, 7, 180>>,
-                      owner: Rewrite,
-                      history: [],
-                      issues: [],
-                      private: %{}
-                    }
+      assert {:ok,
+              %Rewrite{
+                extensions: %{"default" => Source, ".ex" => Source.Ex, ".exs" => Source.Ex},
+                sources: %{
+                  "b.txt" => %Source{
+                    from: :string,
+                    path: "b.txt",
+                    content: "b",
+                    hash: <<174, 49, 163, 166, 58, 86, 116, 125, 28, 58, 67, 31, 0, 34, 7, 180>>,
+                    owner: Rewrite,
+                    history: [],
+                    issues: [],
+                    private: %{},
+                    timestamp: timestamp
                   }
-                }}
+                }
+              }} =
+               Rewrite.from_sources([
+                 Source.from_string("b", "b.txt")
+               ])
+
+      assert_in_delta timestamp, DateTime.utc_now() |> DateTime.to_unix(), 1
     end
 
     test "returns an error if path is missing" do
@@ -240,28 +242,31 @@ defmodule RewriteTest do
 
   describe "from_sources!/1" do
     test "creates a project" do
-      assert Rewrite.from_sources!([
-               Source.from_string("b", "b.txt")
-             ]) ==
-               %Rewrite{
-                 extensions: %{
-                   "default" => Source,
-                   ".ex" => Source.Ex,
-                   ".exs" => Source.Ex
-                 },
-                 sources: %{
-                   "b.txt" => %Source{
-                     from: :string,
-                     path: "b.txt",
-                     content: "b",
-                     hash: <<174, 49, 163, 166, 58, 86, 116, 125, 28, 58, 67, 31, 0, 34, 7, 180>>,
-                     owner: Rewrite,
-                     history: [],
-                     issues: [],
-                     private: %{}
-                   }
+      assert %Rewrite{
+               extensions: %{
+                 "default" => Source,
+                 ".ex" => Source.Ex,
+                 ".exs" => Source.Ex
+               },
+               sources: %{
+                 "b.txt" => %Source{
+                   from: :string,
+                   path: "b.txt",
+                   content: "b",
+                   hash: <<174, 49, 163, 166, 58, 86, 116, 125, 28, 58, 67, 31, 0, 34, 7, 180>>,
+                   owner: Rewrite,
+                   history: [],
+                   issues: [],
+                   timestamp: timestamp,
+                   private: %{}
                  }
                }
+             } =
+               Rewrite.from_sources!([
+                 Source.from_string("b", "b.txt")
+               ])
+
+      assert_in_delta timestamp, DateTime.utc_now() |> DateTime.to_unix(), 1
     end
 
     test "raises an error if path is missing" do
