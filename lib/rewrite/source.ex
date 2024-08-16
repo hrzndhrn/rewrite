@@ -34,32 +34,8 @@ defmodule Rewrite.Source do
 
   @type opts :: keyword()
 
-  # TODO: use the new timestamps type
   @typedoc """
-  The timestamps are integers in POSIX time format.
-
-  The `source` timestamp is the timestamp of the last modification of the file 
-  on disk at the time it was read.
-
-  If the `source` was created by a `string`, the timestamp contains the creation 
-  time.
-
-  The `update` timestamp holds the time of the last update of the `source`. If
-  the `source` was not updated the `update` timestamp is the same as the 
-  `source`.
-  """
-  @type timestamps :: {source :: integer(), update :: integer()}
-
-  @typedoc """
-  The timestamp is an integer in POSIX time format.
-
-  The timestamp is set to the timestamp of the last modification of the file 
-  on disk at the time it was read.
-
-  If the `source` was created by a `string`, the timestamp is the creation 
-  time.
-
-  The timestamp will be updated when the `source` is updated.
+  A `timestamp` as `integer` seconds since epoch.
   """
   @type timestamp :: integer()
 
@@ -86,6 +62,42 @@ defmodule Rewrite.Source do
 
   @type filetype :: map()
 
+  @typedoc """
+  The `struct` representing a source.
+
+  ## Fields
+
+    * `content` - of the `source`.
+
+    * `filetype` - a `struct` implementig the behaviour `Rewrite.Filetype`.
+      The `filetype` is nil when no additional implementation for the `filetype`
+      is available.
+
+    * `from` - contains `:file` or `:string` depending on whether the `source`
+      is created from a file or a string.
+
+    * `hash` - of the `source`. The `hash` is built from the `content` and 
+      `path`.
+
+    * `history` - of the `source`.
+
+    * `issues` - of the `source`.
+
+    * `owner` - of the `source`.
+
+    * `path` - of the `source`. Can be `nil` if the `source` was created by a 
+      `string`.
+
+    * `private` - a field for user defined data.
+
+    * `timestamp` - is set to the timestamp of the last modification of the file 
+      on disk at the time it was read.
+  
+      If the `source` was created by a `string`, the timestamp is the creation 
+      time.
+  
+      The timestamp will be updated when the `source` is updated.
+  """
   @type t :: %Source{
           path: Path.t() | nil,
           content: String.t(),
