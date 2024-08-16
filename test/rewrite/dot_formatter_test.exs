@@ -682,6 +682,43 @@ defmodule Rewrite.DotFormatterTest do
         assert DotFormatter.format(rewrite, check_formatted: true) == :ok
       end
     end
+
+    test "formats files modified after", context do
+      in_tmp context do
+        unformatted = """
+        foo bar baz
+        """
+
+        formatted = """
+        foo bar(baz)
+        """
+
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["*"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => unformatted,
+          "b.ex" => unformatted
+        })
+
+        now = now()
+        File.touch!("a.ex", now - 123)
+
+        rewrite = Rewrite.new!("**/*")
+
+        assert DotFormatter.format(modified_after: now - 12) == :ok
+        assert {:ok, rewrite} = DotFormatter.format(rewrite, modified_after: now - 12)
+
+
+        assert read!("a.ex") == unformatted
+        assert read!(rewrite, "a.ex") == unformatted
+        assert read!("b.ex") == formatted
+        assert read!(rewrite, "b.ex") == formatted
+      end
+    end
   end
 
   describe "format_file/4" do
@@ -1210,4 +1247,6 @@ defmodule Rewrite.DotFormatterTest do
   defp read!(rewrite, path) do
     rewrite |> Rewrite.source!(path) |> Source.get(:content)
   end
+
+  defp now, do: DateTime.utc_now() |> DateTime.to_unix()
 end

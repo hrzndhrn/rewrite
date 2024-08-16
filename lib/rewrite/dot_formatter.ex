@@ -1,5 +1,5 @@
 defmodule Rewrite.DotFormatter do
-  # TODO: @moduledoc 
+  # TODO: @moduledoc
 
   alias Rewrite.DotFormatter
   alias Rewrite.DotFormatterError
@@ -150,7 +150,7 @@ defmodule Rewrite.DotFormatter do
 
   def format(%DotFormatter{} = dot_formatter, nil, opts) do
     dot_formatter
-    |> expand()
+    |> expand(opts)
     |> Task.async_stream(doer(opts), ordered: false, timeout: :infinity)
     |> Enum.reduce({[], []}, &collect_status/2)
     |> check()
@@ -158,7 +158,7 @@ defmodule Rewrite.DotFormatter do
 
   def format(%DotFormatter{} = dot_formatter, %Rewrite{} = project, opts) do
     dot_formatter
-    |> expand(project)
+    |> expand(project, opts)
     |> Task.async_stream(doer(project, opts), ordered: false, timeout: :infinity)
     |> Enum.reduce({[], []}, &collect_status/2)
     |> update(project, opts)
@@ -299,6 +299,7 @@ defmodule Rewrite.DotFormatter do
     list =
       dot_formatter
       |> files()
+      |> filter_by_modified_after(opts)
       |> Enum.reduce([], fn file, acc ->
         formatter = formatter(dot_formatter, formatter_opts, file)
 
@@ -322,7 +323,9 @@ defmodule Rewrite.DotFormatter do
     identity_formatters = Keyword.get(opts, :identity_formatters, false)
     source_path = Keyword.get(opts, :source_path, false)
 
-    Enum.reduce(project, [], fn source, acc ->
+    project
+    |> filter_by_modified_after(opts)
+    |> Enum.reduce([], fn source, acc ->
       case dot_formatters_for_file(dot_formatter, source.path) do
         [] ->
           acc
@@ -346,6 +349,20 @@ defmodule Rewrite.DotFormatter do
           |> Enum.concat(acc)
       end
     end)
+  end
+
+  defp filter_by_modified_after(input, nil), do: input
+
+  defp filter_by_modified_after(input, opts) when is_list(opts) do
+    filter_by_modified_after(input, Keyword.get(opts, :modified_after))
+  end
+
+  defp filter_by_modified_after(files, timestamp) when is_list(files) do
+    Enum.filter(files, fn file -> File.stat!(file, time: :posix).mtime > timestamp end)
+  end
+
+  defp filter_by_modified_after(%Rewrite{} = project, timestamp) do
+    Enum.filter(project, fn source -> source.timestamp > timestamp end)
   end
 
   def conflicts(dot_formatter \\ nil, project \\ nil)
