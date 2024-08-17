@@ -79,7 +79,7 @@ defmodule Rewrite.Source.Ex do
       true
   '''
 
-  alias Mix.Tasks.Format
+  # alias Mix.Tasks.Format
   alias Rewrite.Source
   alias Rewrite.Source.Ex
   alias Sourceror.Zipper
@@ -317,167 +317,171 @@ defmodule Rewrite.Source.Ex do
     Source.filetype(source, ex)
   end
 
-  defp formatter(file, formatter_opts) do
-    file = file || "source.ex"
-
-    formatter_opts =
-      if is_nil(formatter_opts) do
-        {_formatter, formatter_opts} = Format.formatter_for_file(file)
-        formatter_opts
-      else
-        formatter_opts
-      end
-
-    ext = Path.extname(file)
-    plugins = plugins_for_ext(formatter_opts, ext)
-
-    {quoted_to_algebra, plugins} = quoted_to_algebra(plugins)
-
-    formatter_opts =
-      formatter_opts ++
-        [
-          quoted_to_algebra: quoted_to_algebra,
-          extension: ext,
-          file: file
-        ]
-
-    formatter_opts = Keyword.put(formatter_opts, :plugins, plugins)
-
-    fn quoted, opts ->
-      opts =
-        formatter_opts
-        |> update_formatter_opts(opts, ext)
-        |> eval_deps()
-
-      code = Sourceror.to_string(quoted, opts)
-
-      code =
-        opts
-        |> Keyword.fetch!(:plugins)
-        |> Enum.reduce(code, fn plugin, code ->
-          plugin.format(code, opts)
-        end)
-
-      String.trim_trailing(code, "\n") <> "\n"
-    end
+  defp formatter(_file, _formatter_opts) do
+    fn _a, _b -> "todo formatter" end
   end
 
-  defp eval_deps(formatter_opts) do
-    deps = Keyword.get(formatter_opts, :import_deps, [])
+  # defp formatter(file, formatter_opts) do
+  #   file = file || "source.ex"
+  #
+  #   formatter_opts =
+  #     if is_nil(formatter_opts) do
+  #       {_formatter, formatter_opts} = Format.formatter_for_file(file)
+  #       formatter_opts
+  #     else
+  #       formatter_opts
+  #     end
+  #
+  #   ext = Path.extname(file)
+  #   plugins = plugins_for_ext(formatter_opts, ext)
+  #
+  #   {quoted_to_algebra, plugins} = quoted_to_algebra(plugins)
+  #
+  #   formatter_opts =
+  #     formatter_opts ++
+  #       [
+  #         quoted_to_algebra: quoted_to_algebra,
+  #         extension: ext,
+  #         file: file
+  #       ]
+  #
+  #   formatter_opts = Keyword.put(formatter_opts, :plugins, plugins)
+  #
+  #   fn quoted, opts ->
+  #     opts =
+  #       formatter_opts
+  #       |> update_formatter_opts(opts, ext)
+  #       |> eval_deps()
+  #
+  #     code = Sourceror.to_string(quoted, opts)
+  #
+  #     code =
+  #       opts
+  #       |> Keyword.fetch!(:plugins)
+  #       |> Enum.reduce(code, fn plugin, code ->
+  #         plugin.format(code, opts)
+  #       end)
+  #
+  #     String.trim_trailing(code, "\n") <> "\n"
+  #   end
+  # end
 
-    locals_without_parens = eval_deps_opts(deps)
+  # defp eval_deps(formatter_opts) do
+  #   deps = Keyword.get(formatter_opts, :import_deps, [])
+  #
+  #   locals_without_parens = eval_deps_opts(deps)
+  #
+  #   formatter_opts =
+  #     Keyword.update(
+  #       formatter_opts,
+  #       :locals_without_parens,
+  #       locals_without_parens,
+  #       &(locals_without_parens ++ &1)
+  #     )
+  #
+  #   formatter_opts
+  # end
 
-    formatter_opts =
-      Keyword.update(
-        formatter_opts,
-        :locals_without_parens,
-        locals_without_parens,
-        &(locals_without_parens ++ &1)
-      )
+  # defp eval_deps_opts([]) do
+  #   []
+  # end
 
-    formatter_opts
-  end
+  # defp eval_deps_opts(deps) do
+  #   deps_paths = Mix.Project.deps_paths()
+  #
+  #   for dep <- deps,
+  #       dep_path = fetch_valid_dep_path(dep, deps_paths),
+  #       !is_nil(dep_path),
+  #       dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
+  #       File.regular?(dep_dot_formatter),
+  #       dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
+  #       parenless_call <- dep_opts[:export][:locals_without_parens] || [],
+  #       uniq: true,
+  #       do: parenless_call
+  # end
 
-  defp eval_deps_opts([]) do
-    []
-  end
+  # defp fetch_valid_dep_path(dep, deps_paths) when is_atom(dep) do
+  #   with %{^dep => path} <- deps_paths,
+  #        true <- File.dir?(path) do
+  #     path
+  #   else
+  #     _ ->
+  #       nil
+  #   end
+  # end
+  #
+  # defp fetch_valid_dep_path(_dep, _deps_paths) do
+  #   nil
+  # end
 
-  defp eval_deps_opts(deps) do
-    deps_paths = Mix.Project.deps_paths()
+  # defp eval_file_with_keyword_list(path) do
+  #   {opts, _} = Code.eval_file(path)
+  #
+  #   unless Keyword.keyword?(opts) do
+  #     raise "Expected #{inspect(path)} to return a keyword list, got: #{inspect(opts)}"
+  #   end
+  #
+  #   opts
+  # end
 
-    for dep <- deps,
-        dep_path = fetch_valid_dep_path(dep, deps_paths),
-        !is_nil(dep_path),
-        dep_dot_formatter = Path.join(dep_path, ".formatter.exs"),
-        File.regular?(dep_dot_formatter),
-        dep_opts = eval_file_with_keyword_list(dep_dot_formatter),
-        parenless_call <- dep_opts[:export][:locals_without_parens] || [],
-        uniq: true,
-        do: parenless_call
-  end
+  # defp update_formatter_opts(left, nil, _ext), do: left
+  #
+  # defp update_formatter_opts(left, right, ext) do
+  #   left
+  #   |> Keyword.merge(right)
+  #   |> exclude_plugins()
+  #   |> filter_plugins(ext)
+  #   |> update_quoted_to_algebra()
+  # end
 
-  defp fetch_valid_dep_path(dep, deps_paths) when is_atom(dep) do
-    with %{^dep => path} <- deps_paths,
-         true <- File.dir?(path) do
-      path
-    else
-      _ ->
-        nil
-    end
-  end
+  # defp exclude_plugins(opts) do
+  #   case Keyword.has_key?(opts, :plugins) && Keyword.has_key?(opts, :exclude_plugins) do
+  #     true -> do_exclude_plugins(opts)
+  #     false -> opts
+  #   end
+  # end
 
-  defp fetch_valid_dep_path(_dep, _deps_paths) do
-    nil
-  end
+  # defp filter_plugins(opts, ext) do
+  #   Keyword.put(opts, :plugins, plugins_for_ext(opts, ext))
+  # end
 
-  defp eval_file_with_keyword_list(path) do
-    {opts, _} = Code.eval_file(path)
+  # defp do_exclude_plugins(opts) do
+  #   Keyword.update!(opts, :plugins, fn plugins ->
+  #     exclude = Keyword.fetch!(opts, :exclude_plugins)
+  #     Enum.reject(plugins, fn plugin -> plugin in exclude end)
+  #   end)
+  # end
 
-    unless Keyword.keyword?(opts) do
-      raise "Expected #{inspect(path)} to return a keyword list, got: #{inspect(opts)}"
-    end
+  # defp update_quoted_to_algebra(opts) do
+  #   case Keyword.get(opts, :plugins, []) do
+  #     [FreedomFormatter | _] = plugins ->
+  #       {quoted_to_algebra, plugins} = quoted_to_algebra(plugins)
+  #       Keyword.merge(opts, quoted_to_algebra: quoted_to_algebra, plugins: plugins)
+  #
+  #     _plugins ->
+  #       opts
+  #   end
+  # end
 
-    opts
-  end
+  # defp quoted_to_algebra(plugins) do
+  #   case plugins do
+  #     [FreedomFormatter | plugins] ->
+  #       # For now just a workaround to support the FreedomFormatter.
+  #       {&FreedomFormatter.Formatter.to_algebra/2, plugins}
+  #
+  #     plugins ->
+  #       {&Code.quoted_to_algebra/2, plugins}
+  #   end
+  # end
 
-  defp update_formatter_opts(left, nil, _ext), do: left
-
-  defp update_formatter_opts(left, right, ext) do
-    left
-    |> Keyword.merge(right)
-    |> exclude_plugins()
-    |> filter_plugins(ext)
-    |> update_quoted_to_algebra()
-  end
-
-  defp exclude_plugins(opts) do
-    case Keyword.has_key?(opts, :plugins) && Keyword.has_key?(opts, :exclude_plugins) do
-      true -> do_exclude_plugins(opts)
-      false -> opts
-    end
-  end
-
-  defp filter_plugins(opts, ext) do
-    Keyword.put(opts, :plugins, plugins_for_ext(opts, ext))
-  end
-
-  defp do_exclude_plugins(opts) do
-    Keyword.update!(opts, :plugins, fn plugins ->
-      exclude = Keyword.fetch!(opts, :exclude_plugins)
-      Enum.reject(plugins, fn plugin -> plugin in exclude end)
-    end)
-  end
-
-  defp update_quoted_to_algebra(opts) do
-    case Keyword.get(opts, :plugins, []) do
-      [FreedomFormatter | _] = plugins ->
-        {quoted_to_algebra, plugins} = quoted_to_algebra(plugins)
-        Keyword.merge(opts, quoted_to_algebra: quoted_to_algebra, plugins: plugins)
-
-      _plugins ->
-        opts
-    end
-  end
-
-  defp quoted_to_algebra(plugins) do
-    case plugins do
-      [FreedomFormatter | plugins] ->
-        # For now just a workaround to support the FreedomFormatter.
-        {&FreedomFormatter.Formatter.to_algebra/2, plugins}
-
-      plugins ->
-        {&Code.quoted_to_algebra/2, plugins}
-    end
-  end
-
-  defp plugins_for_ext(formatter_opts, ext) do
-    formatter_opts
-    |> Keyword.get(:plugins, [])
-    |> Enum.filter(fn plugin ->
-      Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
-        ext in List.wrap(plugin.features(formatter_opts)[:extensions])
-    end)
-  end
+  # defp plugins_for_ext(formatter_opts, ext) do
+  #   formatter_opts
+  #   |> Keyword.get(:plugins, [])
+  #   |> Enum.filter(fn plugin ->
+  #     Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
+  #       ext in List.wrap(plugin.features(formatter_opts)[:extensions])
+  #   end)
+  # end
 
   defp get_modules(code) do
     code

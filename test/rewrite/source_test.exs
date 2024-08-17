@@ -10,34 +10,40 @@ defmodule Rewrite.SourceTest do
   describe "read/1" do
     test "creates new source" do
       path = "test/fixtures/source/hello.txt"
+      mtime = File.stat!(path, time: :posix).mtime
+      hash = hash(path)
 
-      assert %Source{
+      assert Source.read!(path) == %Source{
                from: :file,
                owner: Rewrite,
-               path: ^path,
+               path: path,
                content: "hello\n",
                filetype: nil,
-               hash: _hash,
+               hash: hash,
                issues: [],
                private: %{},
+               timestamp: mtime,
                history: []
-             } = Source.read!(path)
+             }
     end
 
     test "creates new source from full path" do
       path = Path.join(File.cwd!(), "test/fixtures/source/hello.txt")
+      mtime = File.stat!(path, time: :posix).mtime
+      hash = hash(path)
 
-      assert %Source{
+      assert Source.read!(path) == %Source{
                from: :file,
                owner: Rewrite,
-               path: ^path,
+               path: path,
                content: "hello\n",
                filetype: nil,
-               hash: _hash,
+               hash: hash,
                issues: [],
                private: %{},
+               timestamp: mtime,
                history: []
-             } = Source.read!(path)
+             }
     end
   end
 
@@ -228,6 +234,7 @@ defmodule Rewrite.SourceTest do
 
       assert source.history == [{:content, Tester, txt}]
       assert source.content == new
+      assert updated_timestamp?(source)
     end
 
     test "updates the path" do
@@ -241,26 +248,30 @@ defmodule Rewrite.SourceTest do
 
       assert source.history == [{:path, Rewrite, path}]
       assert source.path == new
+      assert updated_timestamp?(source)
     end
 
     test "updates with filetype value" do
-      source = Source.Ex.from_string(":a", "test/a.ex")
+      source = ":a" |> Source.Ex.from_string("test/a.ex") |> Source.touch(now(-10))
       quoted = Sourceror.parse_string!(":b")
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
       assert Source.get(source, :content) == ":b\n"
       assert Source.updated?(source) == true
+      assert updated_timestamp?(source)
     end
 
     test "does not update with filetype value without any changes" do
-      source = Source.Ex.from_string(":a", "test/a.ex")
+      timestamp = now(-10)
+      source = ":a" |> Source.Ex.from_string("test/a.ex") |> Source.touch(timestamp)
       quoted = Sourceror.parse_string!(":a")
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
       assert Source.get(source, :content) == ":a"
       assert Source.updated?(source) == false
+      assert source.timestamp == timestamp
     end
   end
 
@@ -447,5 +458,24 @@ defmodule Rewrite.SourceTest do
 
       assert Source.issues(source) == [:bar, :foo]
     end
+  end
+
+  defp hash(path) do
+    content = File.read!(path)
+    :crypto.hash(:md5, path <> content)
+  end
+
+  defp now(diff \\ 0) do
+    now = DateTime.utc_now() |> DateTime.to_unix()
+    now + diff
+  end
+
+  defp updated_timestamp?(source) do
+    if File.regular?(source.path) do
+      mtime = File.stat!(source.path, time: :posix).mtime
+      assert mtime < source.timestamp
+    end
+
+    assert_in_delta source.timestamp, now(), 1
   end
 end

@@ -17,7 +17,7 @@ defmodule Rewrite.Source.ExTest do
 
   describe "handle_update/2" do
     test "updates quoted" do
-      source = Source.Ex.from_string(":a", "a.exs")
+      source = Source.Ex.from_string(":a", "a.exs") |> dbg()
       quoted = Sourceror.parse_string!(":x")
       source = Source.update(source, :quoted, quoted)
 
