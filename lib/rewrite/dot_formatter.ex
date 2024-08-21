@@ -29,6 +29,7 @@ defmodule Rewrite.DotFormatter do
     subs: [],
     source: nil,
     plugin_opts: [],
+    timestamp: nil,
     path: nil
   ]
 
@@ -42,15 +43,70 @@ defmodule Rewrite.DotFormatter do
 
   def do_eval(project, opts, path) do
     dot_formatter_path = dot_formatter_path(path, opts)
+    opts = Keyword.put(opts, :reload_plugins, false)
 
-    with {:ok, term} <- eval_dot_formatter(project, dot_formatter_path),
+    with {:ok, term, timestamp} <- eval_dot_formatter(project, dot_formatter_path),
          {:ok, term} <- validate(term, dot_formatter_path, path),
-         {:ok, dot_formatter} <- new(term, dot_formatter_path),
+         {:ok, dot_formatter} <- new(term, dot_formatter_path, timestamp),
          {:ok, dot_formatter} <- eval_deps(dot_formatter),
-         {:ok, dot_formatter} <- eval_subs(dot_formatter, project, opts) do
+         {:ok, dot_formatter} <- eval_subs(dot_formatter, project, opts),
+         {:ok, dot_formatter} <- update_dot_formatter(dot_formatter, opts) do
       load_plugins(dot_formatter)
     end
   end
+
+  def update(dot_formatter, project \\ nil, opts \\ [])
+
+  def update(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts),
+    do: update(dot_formatter, nil, opts)
+
+  def update(%DotFormatter{} = dot_formatter, project, opts) do
+    if up_to_date?(dot_formatter, project) do
+      {:ok, dot_formatter}
+    else
+      eval(project, opts)
+    end
+  end
+
+  defp update_dot_formatter(dot_formatter, opts) do
+    updated =
+      dot_formatter
+      |> remove_plugins(opts[:remove_plugins])
+      |> replace_plugins(opts[:replace_plugins])
+
+    if Keyword.get(opts, :reload_plugins, true) do
+      reload_plugins(updated, dot_formatter)
+    else
+      {:ok, updated}
+    end
+  end
+
+  defp remove_plugins(dot_formatter, nil), do: dot_formatter
+
+  defp remove_plugins(dot_formatter, remove_plugins) when is_list(remove_plugins) do
+    map(dot_formatter, fn dot_formatter ->
+      Map.update!(dot_formatter, :plugins, fn plugins ->
+        Enum.reject(plugins, fn plugin -> plugin in remove_plugins end)
+      end)
+    end)
+  end
+
+  defp replace_plugins(dot_formatter, nil), do: dot_formatter
+
+  defp replace_plugins(dot_formatter, replace_plugins) do
+    map(dot_formatter, fn dot_formatter ->
+      Map.update!(dot_formatter, :plugins, fn plugins ->
+        Enum.map(plugins, fn plugin ->
+          Enum.find_value(replace_plugins, plugin, fn {old, new} ->
+            if plugin == old, do: new
+          end)
+        end)
+      end)
+    end)
+  end
+
+  defp reload_plugins(dot_formatter, dot_formatter), do: {:ok, dot_formatter}
+  defp reload_plugins(dot_formatter, _old_dot_formatter), do: load_plugins(dot_formatter)
 
   defp dot_formatter_path(@root, opts) do
     Keyword.get(opts, :dot_formatter, @defaul_dot_formatter)
@@ -60,7 +116,7 @@ defmodule Rewrite.DotFormatter do
     Path.join(path, @defaul_dot_formatter)
   end
 
-  defp new(term, dot_formatter_path) do
+  defp new(term, dot_formatter_path, timestamp) do
     source = Path.basename(dot_formatter_path)
 
     path =
@@ -83,7 +139,15 @@ defmodule Rewrite.DotFormatter do
       end)
       |> Keyword.split(@formatter_opts)
 
-    data = Keyword.merge(formatter_opts, source: source, path: path, plugin_opts: plugin_opts)
+    data =
+      formatter_opts
+      |> Keyword.put_new(:plugins, [])
+      |> Keyword.merge(
+        source: source,
+        path: path,
+        plugin_opts: plugin_opts,
+        timestamp: timestamp
+      )
 
     {:ok, struct!(__MODULE__, data)}
   rescue
@@ -123,6 +187,55 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
+  @doc """
+  Returns the `%DotFormatter{}` struct for the given `path` or `nil` when not 
+  found.
+  """
+  @spec get(t(), path :: Path.t()) :: t()
+  def get(%DotFormatter{} = dot_formatter, path) do
+    if dot_formatter.path == path do
+      dot_formatter
+    else
+      Enum.find(dot_formatter.subs, fn sub -> get(sub, path) end)
+    end
+  end
+
+  @doc """
+  Returns `true` if the given `dot_formatter` is up to date.
+
+  The function only checks the timestamps in the `dot_formatter` struct with the
+  timestamp of the underlying file or source in the `project`.
+  """
+  @spec up_to_date?(t(), project :: Rewrite.t()) :: boolean()
+  def up_to_date?(dot_formatter, project \\ nil) do
+    dot_formatter
+    |> reduce(fn dot_formatter, acc ->
+      up_to_date? = dot_formatter.timestamp == timestamp(dot_formatter, project)
+      [up_to_date? | acc]
+    end)
+    |> Enum.all?()
+  end
+
+  defp timestamp(dot_formatter, nil) do
+    file = file(dot_formatter)
+
+    case File.stat(file, time: :posix) do
+      {:ok, %{mtime: timestamp}} -> timestamp
+      {:error, _reason} -> 0
+    end
+  end
+
+  defp timestamp(dot_formatter, project) do
+    file = file(dot_formatter)
+
+    case Rewrite.source(project, file) do
+      {:ok, %{timestamp: timestamp}} -> timestamp
+      {:error, _reason} -> timestamp(dot_formatter, nil)
+    end
+  end
+
+  defp file(dot_formatter), do: Path.join(dot_formatter.path, dot_formatter.source)
+
   @spec format(t() | nil, Rewrite.t() | nil, keyword()) :: :ok | {:error, DotFormatterError.t()}
   def format(dot_formatter \\ nil, project \\ nil, opts \\ [])
 
@@ -134,6 +247,10 @@ defmodule Rewrite.DotFormatter do
     with {:ok, dot_formatter} <- eval(project, opts) do
       format(dot_formatter, project, opts)
     end
+  end
+
+  def format(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts) do
+    format(dot_formatter, nil, opts)
   end
 
   def format(%Rewrite{} = project, nil, opts) do
@@ -149,19 +266,23 @@ defmodule Rewrite.DotFormatter do
   end
 
   def format(%DotFormatter{} = dot_formatter, nil, opts) do
-    dot_formatter
-    |> expand(opts)
-    |> Task.async_stream(doer(opts), ordered: false, timeout: :infinity)
-    |> Enum.reduce({[], []}, &collect_status/2)
-    |> check()
+    with {:ok, dot_formatter} <- update_dot_formatter(dot_formatter, opts) do
+      dot_formatter
+      |> expand(opts)
+      |> Task.async_stream(doer(opts), ordered: false, timeout: :infinity)
+      |> Enum.reduce({[], []}, &collect_status/2)
+      |> check()
+    end
   end
 
   def format(%DotFormatter{} = dot_formatter, %Rewrite{} = project, opts) do
-    dot_formatter
-    |> expand(project, opts)
-    |> Task.async_stream(doer(project, opts), ordered: false, timeout: :infinity)
-    |> Enum.reduce({[], []}, &collect_status/2)
-    |> update(project, opts)
+    with {:ok, dot_formatter} <- update_dot_formatter(dot_formatter, opts) do
+      dot_formatter
+      |> expand(project, opts)
+      |> Task.async_stream(doer(project, opts), ordered: false, timeout: :infinity)
+      |> Enum.reduce({[], []}, &collect_status/2)
+      |> update_source(project, opts)
+    end
   end
 
   defp doer(opts) do
@@ -247,7 +368,7 @@ defmodule Rewrite.DotFormatter do
 
   # TODO: check exits
 
-  defp update({[], formatted} = result, project, opts) do
+  defp update_source({[], formatted} = result, project, opts) do
     if Keyword.get(opts, :check_formatted, false) do
       check(result)
     else
@@ -402,27 +523,6 @@ defmodule Rewrite.DotFormatter do
     end)
   end
 
-  #   result =
-  #     Enum.reduce_while(expanded, %{}, fn {path, formatter, dot_formatter_path}, acc ->
-  #       if Map.has_key?(acc, path) do
-  #         {:halt,
-  #          {:error,
-  #           %DotFormatterError{
-  #             reason: {:conflict, dot_formatter_path, Map.get(acc, path)},
-  #             path: path
-  #           }}}
-  #       else
-  #         {:cont, Map.put(acc, path, dot_formatter_path)}
-  #       end
-  #     end)
-  #
-  #   case result do
-  #     {:error, _error} = error -> error
-  #     _else -> {:ok, expanded}
-  #   end
-  # end
-  # end
-
   defp source_path(%DotFormatter{path: path, source: source}), do: Path.join(path, source)
 
   def formatter_for_file(dot_formatter \\ nil, file, opts \\ [])
@@ -447,6 +547,27 @@ defmodule Rewrite.DotFormatter do
         # TODO: error handling
         {:error, :todo}
     end
+  end
+
+  @doc """
+  Returns a `%DotFormatter{}` struct with the result of invoking `fun` on the 
+  given `dot_formatter` and any sub-formatters.
+  """
+  @spec map(DotFormatter.t(), (DotFormatter.t() -> DotFormatter.t())) :: DotFormatter.t()
+  def map(%DotFormatter{} = dot_formatter, fun) do
+    dot_formatter = fun.(dot_formatter)
+
+    Map.update!(dot_formatter, :subs, fn subs ->
+      Enum.map(subs, fn sub -> map(sub, fun) end)
+    end)
+  end
+
+  def reduce(%DotFormatter{} = dot_formatter, acc \\ [], fun) do
+    acc = fun.(dot_formatter, acc)
+
+    Enum.reduce(dot_formatter.subs, acc, fn sub, acc ->
+      reduce(sub, acc, fun)
+    end)
   end
 
   defp dot_formatters_for_file(dot_formatter, file, acc \\ []) do
@@ -546,7 +667,8 @@ defmodule Rewrite.DotFormatter do
   defp eval_dot_formatter(nil, path) do
     if File.regular?(path) do
       {term, _binding} = Code.eval_file(path)
-      {:ok, term}
+      timestamp = File.stat!(path, time: :posix).mtime
+      {:ok, term, timestamp}
     else
       {:error, %DotFormatterError{reason: :dot_formatter_not_found, path: path}}
     end
@@ -556,7 +678,7 @@ defmodule Rewrite.DotFormatter do
     case Rewrite.source(project, path) do
       {:ok, source} ->
         {term, _binding} = source |> Source.get(:content) |> Code.eval_string()
-        {:ok, term}
+        {:ok, term, source.timestamp}
 
       {:error, %Rewrite.Error{reason: :nosource}} ->
         eval_dot_formatter(nil, path)
@@ -584,7 +706,7 @@ defmodule Rewrite.DotFormatter do
     result =
       Enum.reduce_while(deps_paths, [], fn {dep, path}, acc ->
         case eval_dot_formatter(path) do
-          {:ok, term} ->
+          {:ok, term, _timestamp} ->
             locals_without_parens = term[:export][:locals_without_parens] || []
             {:cont, acc ++ locals_without_parens}
 
@@ -674,20 +796,22 @@ defmodule Rewrite.DotFormatter do
       end)
 
     case result do
-      [] ->
-        {:ok, dot_formatter}
-
       sigils when is_list(sigils) ->
-        sigils =
-          sigils
-          |> Enum.reverse()
-          |> sigils(formatter_opts)
-
-        subs = Enum.map(dot_formatter.subs, &load_plugins/1)
-        {:ok, %{dot_formatter | sigils: sigils, subs: subs}}
+        with {:ok, subs} <- load_plugins(dot_formatter.subs, []) do
+          sigils = sigils(sigils, formatter_opts)
+          {:ok, %{dot_formatter | sigils: sigils, subs: subs}}
+        end
 
       error ->
         {:error, error}
+    end
+  end
+
+  defp load_plugins([], subs), do: {:ok, Enum.reverse(subs)}
+
+  defp load_plugins([sub | tail], subs) do
+    with {:ok, dot_formatter} <- load_plugins(sub) do
+      load_plugins(tail, [dot_formatter | subs])
     end
   end
 
@@ -703,8 +827,11 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
+  defp sigils([], _formatter_opts), do: nil
+
   defp sigils(sigils, formatter_opts) do
     sigils
+    |> Enum.reverse()
     |> Enum.group_by(
       fn {sigil, _plugin} -> sigil end,
       fn {_sigil, plugin} -> plugin end

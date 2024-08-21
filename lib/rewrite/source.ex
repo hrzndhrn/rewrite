@@ -92,10 +92,10 @@ defmodule Rewrite.Source do
 
     * `timestamp` - is set to the timestamp of the last modification of the file 
       on disk at the time it was read.
-  
+
       If the `source` was created by a `string`, the timestamp is the creation 
       time.
-  
+
       The timestamp will be updated when the `source` is updated.
   """
   @type t :: %Source{
