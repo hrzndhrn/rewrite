@@ -50,7 +50,7 @@ defmodule Rewrite.DotFormatter do
          {:ok, dot_formatter} <- new(term, dot_formatter_path, timestamp),
          {:ok, dot_formatter} <- eval_deps(dot_formatter),
          {:ok, dot_formatter} <- eval_subs(dot_formatter, project, opts),
-         {:ok, dot_formatter} <- update_dot_formatter(dot_formatter, opts) do
+         {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
       load_plugins(dot_formatter)
     end
   end
@@ -68,7 +68,7 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp update_dot_formatter(dot_formatter, opts) do
+  defp update_plugins(dot_formatter, opts) do
     updated =
       dot_formatter
       |> remove_plugins(opts[:remove_plugins])
@@ -115,6 +115,8 @@ defmodule Rewrite.DotFormatter do
   defp dot_formatter_path(path, _opts) do
     Path.join(path, @defaul_dot_formatter)
   end
+
+  def new, do: %DotFormatter{inputs: [GlobEx.compile!("**/*")]}
 
   defp new(term, dot_formatter_path, timestamp) do
     source = Path.basename(dot_formatter_path)
@@ -236,56 +238,85 @@ defmodule Rewrite.DotFormatter do
 
   defp file(dot_formatter), do: Path.join(dot_formatter.path, dot_formatter.source)
 
-  @spec format(t() | nil, Rewrite.t() | nil, keyword()) :: :ok | {:error, DotFormatterError.t()}
-  def format(dot_formatter \\ nil, project \\ nil, opts \\ [])
+  # TODO: 
+  # * make dot_formatter arg mandatory
+  # * write own function for rewrite: format_rewrite/3
+  #   * this function get @doc false and will be called by Rewrite.format/3
+  @spec format(t() | nil, keyword()) :: :ok | {:error, DotFormatterError.t()}
+  # def format(dot_formatter \\ nil, project \\ nil, opts \\ [])
+  #
+  # def format(opts, nil, []) when is_list(opts) do
+  #   format(nil, nil, opts)
+  # end
+  #
+  # def format(%Rewrite{} = project, opts, []) when is_list(opts) do
+  #   with {:ok, dot_formatter} <- eval(project, opts) do
+  #     format(dot_formatter, project, opts)
+  #   end
+  # end
+  #
+  # def format(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts) do
+  #   format(dot_formatter, nil, opts)
+  # end
+  #
+  # def format(%Rewrite{} = project, nil, opts) do
+  #   with {:ok, dot_formatter} <- eval(project, opts) do
+  #     format(dot_formatter, project, opts)
+  #   end
+  # end
+  #
+  # def format(nil, nil, opts) do
+  #   with {:ok, dot_formatter} <- eval(nil, opts) do
+  #     format(dot_formatter, nil, opts)
+  #   end
+  # end
 
-  def format(opts, nil, []) when is_list(opts) do
-    format(nil, nil, opts)
-  end
-
-  def format(%Rewrite{} = project, opts, []) when is_list(opts) do
-    with {:ok, dot_formatter} <- eval(project, opts) do
-      format(dot_formatter, project, opts)
-    end
-  end
-
-  def format(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts) do
-    format(dot_formatter, nil, opts)
-  end
-
-  def format(%Rewrite{} = project, nil, opts) do
-    with {:ok, dot_formatter} <- eval(project, opts) do
-      format(dot_formatter, project, opts)
-    end
-  end
-
-  def format(nil, nil, opts) do
-    with {:ok, dot_formatter} <- eval(nil, opts) do
-      format(dot_formatter, nil, opts)
-    end
-  end
-
-  def format(%DotFormatter{} = dot_formatter, nil, opts) do
-    with {:ok, dot_formatter} <- update_dot_formatter(dot_formatter, opts) do
+  def format(%DotFormatter{} = dot_formatter, opts \\ []) when is_list(opts) do
+    with {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
       dot_formatter
       |> expand(opts)
-      |> Task.async_stream(doer(opts), ordered: false, timeout: :infinity)
+      |> Task.async_stream(
+        async_stream_formatter(opts),
+        ordered: false,
+        timeout: :infinity
+      )
       |> Enum.reduce({[], []}, &collect_status/2)
       |> check()
     end
   end
 
-  def format(%DotFormatter{} = dot_formatter, %Rewrite{} = project, opts) do
-    with {:ok, dot_formatter} <- update_dot_formatter(dot_formatter, opts) do
+  # def format(%DotFormatter{} = dot_formatter, %Rewrite{} = project, opts) do
+  #   with {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
+  #     dot_formatter
+  #     |> expand(project, opts)
+  #     |> Task.async_stream(
+  #       async_stream_formatter(project, opts),
+  #       ordered: false,
+  #       timeout: :infinity
+  #     )
+  #     |> Enum.reduce({[], []}, &collect_status/2)
+  #     |> update_source(project, opts)
+  #   end
+  # end
+
+  @doc false
+  @spec format_rewrite(t(), Rewrite.t(), keyword()) ::
+          {:ok, Rewrite.t()} | {:error, DotFormatterError.t()}
+  def format_rewrite(%DotFormatter{} = dot_formatter, %Rewrite{} = project, opts \\ []) do
+    with {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
       dot_formatter
       |> expand(project, opts)
-      |> Task.async_stream(doer(project, opts), ordered: false, timeout: :infinity)
+      |> Task.async_stream(
+        async_stream_formatter(project, opts),
+        ordered: false,
+        timeout: :infinity
+      )
       |> Enum.reduce({[], []}, &collect_status/2)
       |> update_source(project, opts)
     end
   end
 
-  defp doer(opts) do
+  defp async_stream_formatter(opts) do
     check_formatted? = Keyword.get(opts, :check_formatted, false)
 
     case check_formatted? do
@@ -315,7 +346,7 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp doer(project, opts) do
+  defp async_stream_formatter(project, opts) do
     check_formatted? = Keyword.get(opts, :check_formatted, false)
 
     case check_formatted? do
@@ -385,14 +416,49 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  def format_file(dot_formatter \\ nil, project \\ nil, file, opts \\ [])
-
-  def format_file(nil, nil, file, opts) do
+  def format_file(%DotFormatter{} = dot_formatter, file, opts \\ []) do
     with {:ok, content} <- read(file),
-         {:ok, formatted} <- format_string!(content, opts) do
+         {:ok, formatted} <- format_string(dot_formatter, file, content, opts) do
       write(file, formatted)
     end
   end
+
+  defp read(path) do
+    with {:error, reason} <- File.read(path) do
+      {:error, %DotFormatterError{reason: {:read, reason}, path: path}}
+    end
+  end
+
+  defp write(path, content) do
+    with {:error, reason} <- File.write(path, content) do
+      {:error, %DotFormatterError{reason: {:write, reason}, path: path}}
+    end
+  end
+
+  # TODO:
+  # * add @doc false
+  # * call this function by Rewrite.format_source/3
+  def format_source(%DotFormatter{} = dot_formatter, %Rewrite{} = project, file, opts \\ []) do
+    Rewrite.update(project, file, fn source ->
+      content = Source.get(source, :content)
+
+      with {:ok, formatted} <- format_string(dot_formatter, file, content, opts) do
+        Source.update(source, :content, formatted)
+      end
+    end)
+  end
+
+  def format_string(dot_formatter, file, string, opts \\ []) do
+    opts = Keyword.put_new(opts, :file, file)
+
+    with {:ok, formatter} <- formatter_for_file(dot_formatter, file, opts) do
+      {:ok, formatter.(string)}
+    end
+  rescue
+    error in SyntaxError -> {:error, error}
+  end
+
+  # TODO: def format_quoted/4
 
   def formatter_opts(dot_formatter) do
     dot_formatter
@@ -525,6 +591,9 @@ defmodule Rewrite.DotFormatter do
 
   defp source_path(%DotFormatter{path: path, source: source}), do: Path.join(path, source)
 
+  # TODO: 
+  # * make dot_formatter arg mandatory
+  # * add option input. possible values: :string, :quoted. default: :string
   def formatter_for_file(dot_formatter \\ nil, file, opts \\ [])
 
   def formatter_for_file(file, opts, []) when is_binary(file) and is_list(opts) do
@@ -638,28 +707,6 @@ defmodule Rewrite.DotFormatter do
     |> List.wrap()
     |> Enum.flat_map(&GlobEx.ls/1)
     |> Enum.filter(&File.regular?/1)
-  end
-
-  defp format_string!(string, opts) do
-    formatted =
-      case Code.format_string!(string, opts) do
-        [] -> ""
-        formatted -> IO.iodata_to_binary([formatted, ?\n])
-      end
-
-    if string == formatted, do: :ok, else: {:ok, formatted}
-  end
-
-  defp read(path) do
-    with {:error, reason} <- File.read(path) do
-      {:error, %DotFormatterError{reason: {:read, reason}, path: path}}
-    end
-  end
-
-  defp write(path, content) do
-    with {:error, reason} <- File.write(path, content) do
-      {:error, %DotFormatterError{reason: {:write, reason}, path: path}}
-    end
   end
 
   defp eval_dot_formatter(project \\ nil, path)

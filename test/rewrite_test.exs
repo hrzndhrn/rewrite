@@ -156,6 +156,8 @@ defmodule RewriteTest do
 
       File.chmod(file, 0o644)
     end
+
+    test "throws an error for a syntax error in code"
   end
 
   describe "read!/2" do

@@ -99,6 +99,15 @@ defmodule Rewrite.DotFormatterTest do
   @moduletag :tmp_dir
 
   describe "format/2" do
+    test "formats file", context do
+      in_tmp context do
+        write!("a.ex", "foo bar")
+
+        assert DotFormatter.format(DotFormatter.new()) == :ok
+        assert read!("a.ex") == "foo(bar)\n"
+      end
+    end
+
     test "uses inputs and configuration from .formatter.exs", context do
       in_tmp context do
         write!(%{
@@ -113,17 +122,13 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        foo bar(baz)
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               foo bar(baz)
+               """
 
         # update .formatter.exs
 
@@ -131,21 +136,24 @@ defmodule Rewrite.DotFormatterTest do
         [inputs: ["a.ex"]]
         """)
 
-        rewrite = Rewrite.new!("**/*")
+        # with the old dot_formatter
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert read!("a.ex") == """
+               foo bar(baz)
+               """
 
-        expected = """
-        foo(bar(baz))
-        """
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert DotFormatter.format(dot_formatter) == :ok
+
+        assert read!("a.ex") == """
+               foo(bar(baz))
+               """
       end
     end
 
-    test "does not cache inputs from .formatter.exs", context do
+    test "caches inputs from .formatter.exs", context do
       in_tmp context do
         write!(%{
           ".formatter.exs" => """
@@ -159,17 +167,13 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        foo bar(baz)
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               foo bar(baz)
+               """
 
         # add b.ex
 
@@ -177,21 +181,18 @@ defmodule Rewrite.DotFormatterTest do
         bar baz bat
         """)
 
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        assert Rewrite.source(rewrite, "b.ex") ==
-                 {:error, %Rewrite.Error{reason: :nosource, path: "b.ex"}}
+        assert read!("b.ex") == """
+               bar baz bat
+               """
 
-        assert DotFormatter.format() == :ok
-        rewrite = Rewrite.new!("**/*")
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        {:ok, dot_formatter} = DotFormatter.eval()
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        bar(baz(bat))
-        """
-
-        assert read!("b.ex") == expected
-        assert read!(rewrite, "b.ex") == expected
+        assert read!("b.ex") == """
+               bar(baz(bat))
+               """
       end
     end
 
@@ -211,24 +212,17 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        foo(bar)
-        """
+        assert read!("a.ex") == """
+               foo(bar)
+               """
 
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
-
-        expected = """
-        foo(bar)
-        """
-
-        assert read!(".b.ex") == expected
-        assert read!(rewrite, ".b.ex") == expected
+        assert read!(".b.ex") == """
+               foo(bar)
+               """
       end
     end
 
@@ -251,23 +245,19 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        if true do
-          ~W'''
-          foo
-          bar
-          baz
-          '''abc
-        end
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               if true do
+                 ~W'''
+                 foo
+                 bar
+                 baz
+                 '''abc
+               end
+               """
       end
     end
 
@@ -286,19 +276,15 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        foo
-        bar
-        baz
-        """
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == """
+               foo
+               bar
+               baz
+               """
       end
     end
 
@@ -317,15 +303,11 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = "foo.bar.baz."
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == "foo.bar.baz."
       end
     end
 
@@ -345,15 +327,11 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = "foo\nbar\nbaz."
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == "foo\nbar\nbaz."
       end
     end
 
@@ -374,19 +352,15 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        def sigil_test(assigns) do
-          ~W"foo\nbar\nbaz."abc
-        end
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               def sigil_test(assigns) do
+                 ~W"foo\nbar\nbaz."abc
+               end
+               """
       end
     end
 
@@ -408,19 +382,15 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        def sigil_test(assigns) do
-          ~W"foo.bar.baz"abc
-        end
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               def sigil_test(assigns) do
+                 ~W"foo.bar.baz"abc
+               end
+               """
       end
     end
 
@@ -439,19 +409,15 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format(remove_plugins: [NewlineToDotPlugin]) == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite, remove_plugins: [NewlineToDotPlugin])
+        assert DotFormatter.format(dot_formatter, remove_plugins: [NewlineToDotPlugin]) == :ok
 
-        expected = "foo\nbar\nbaz\n"
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == "foo\nbar\nbaz\n"
       end
     end
 
-    test "uses remaining plugin after removing another with pre eval", context do
+    test "uses remaining plugin after removing another in eval", context do
       in_tmp context do
         write!(%{
           ".formatter.exs" => """
@@ -466,19 +432,11 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval(remove_plugins: [NewlineToDotPlugin])
 
-        {:ok, dot_formatter} = DotFormatter.eval()
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        assert DotFormatter.format(dot_formatter, remove_plugins: [NewlineToDotPlugin]) == :ok
-
-        assert {:ok, rewrite} =
-                 DotFormatter.format(dot_formatter, rewrite, remove_plugins: [NewlineToDotPlugin])
-
-        expected = "foo\nbar\nbaz\n"
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == "foo\nbar\nbaz\n"
       end
     end
 
@@ -497,24 +455,17 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format(replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}]) ==
-                 :ok
+        assert DotFormatter.format(dot_formatter,
+                 replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}]
+               ) == :ok
 
-        assert {:ok, rewrite} =
-                 DotFormatter.format(rewrite,
-                   replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}]
-                 )
-
-        expected = "foo\nbar\nbaz\n"
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == "foo\nbar\nbaz\n"
       end
     end
 
-    test "uses replaced plugin with pre eval", context do
+    test "uses replaced plugin in eval", context do
       in_tmp context do
         write!(%{
           ".formatter.exs" => """
@@ -529,24 +480,12 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} =
+          DotFormatter.eval(replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}])
 
-        {:ok, dot_formatter} = DotFormatter.eval()
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        assert DotFormatter.format(dot_formatter,
-                 replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}]
-               ) ==
-                 :ok
-
-        assert {:ok, rewrite} =
-                 DotFormatter.format(dot_formatter, rewrite,
-                   replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}]
-                 )
-
-        expected = "foo\nbar\nbaz\n"
-
-        assert read!("a.w") == expected
-        assert read!(rewrite, "a.w") == expected
+        assert read!("a.w") == "foo\nbar\nbaz\n"
       end
     end
 
@@ -564,19 +503,13 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval(dot_formatter: "custom_formatter.exs")
 
-        assert DotFormatter.format(dot_formatter: "custom_formatter.exs") == :ok
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        assert {:ok, rewrite} =
-                 DotFormatter.format(rewrite, dot_formatter: "custom_formatter.exs")
-
-        expected = """
-        foo bar(baz)
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               foo bar(baz)
+               """
       end
     end
 
@@ -605,32 +538,23 @@ defmodule Rewrite.DotFormatterTest do
           "other/a.ex" => code
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        my_fun(:foo, :bar)
-        other_fun :baz, :bang
-        """
+        assert read!("li/a.ex") == """
+               my_fun(:foo, :bar)
+               other_fun :baz, :bang
+               """
 
-        assert read!("li/a.ex") == expected
-        assert read!(rewrite, "li/a.ex") == expected
-
-        expected = """
-        my_fun :foo, :bar
-        other_fun(:baz, :bang)
-        """
-
-        assert read!("lib/a.ex") == expected
-        assert read!(rewrite, "lib/a.ex") == expected
+        assert read!("lib/a.ex") == """
+               my_fun :foo, :bar
+               other_fun(:baz, :bang)
+               """
 
         assert read!("lib/b.ex") == code
-        assert read!(rewrite, "lib/b.ex") == code
 
         assert read!("other/a.ex") == code
-        assert read!(rewrite, "other/a.ex") == code
       end
     end
 
@@ -649,17 +573,13 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        my_fun :foo, :bar
-        """
-
-        assert read!("a.ex") == expected
-        assert read!(rewrite, "a.ex") == expected
+        assert read!("a.ex") == """
+               my_fun :foo, :bar
+               """
       end
     end
 
@@ -685,18 +605,14 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        my_fun :foo, :bar
-        other_fun(:baz)
-        """
-
-        assert read!("lib/sub/a.ex") == expected
-        assert read!(rewrite, "lib/sub/a.ex") == expected
+        assert read!("lib/sub/a.ex") == """
+               my_fun :foo, :bar
+               other_fun(:baz)
+               """
 
         # Add a new entry to "lib" and it also gets picked.
 
@@ -710,18 +626,14 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
-        assert DotFormatter.format() == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite)
+        assert DotFormatter.format(dot_formatter) == :ok
 
-        expected = """
-        my_fun(:foo, :bar)
-        other_fun :baz
-        """
-
-        assert read!("lib/extra/a.ex") == expected
-        assert read!(rewrite, "lib/extra/a.ex") == expected
+        assert read!("lib/extra/a.ex") == """
+               my_fun(:foo, :bar)
+               other_fun :baz
+               """
       end
     end
 
@@ -735,6 +647,8 @@ defmodule Rewrite.DotFormatterTest do
           defmodule <%= module %>.Bar do end
           """
         })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
 
         error = %DotFormatterError{
           reason: :format,
@@ -751,7 +665,7 @@ defmodule Rewrite.DotFormatterTest do
           ]
         }
 
-        assert DotFormatter.format() == {:error, error}
+        assert DotFormatter.format(dot_formatter) == {:error, error}
 
         assert Exception.message(error) == """
                Format errors - \
@@ -778,7 +692,7 @@ defmodule Rewrite.DotFormatterTest do
           """
         })
 
-        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval()
 
         error = %DotFormatterError{
           reason: :format,
@@ -786,8 +700,7 @@ defmodule Rewrite.DotFormatterTest do
           exits: []
         }
 
-        assert DotFormatter.format(check_formatted: true) == {:error, error}
-        assert DotFormatter.format(rewrite, check_formatted: true) == {:error, error}
+        assert DotFormatter.format(dot_formatter, check_formatted: true) == {:error, error}
 
         assert Exception.message(error) == """
                Format errors - \
@@ -801,23 +714,14 @@ defmodule Rewrite.DotFormatterTest do
         foo bar(baz)
         """)
 
-        assert DotFormatter.format(check_formatted: true) == :ok
-        assert {:error, _error} = DotFormatter.format(rewrite, check_formatted: true)
-
-        rewrite = Rewrite.new!("**/*")
-
-        assert DotFormatter.format(rewrite, check_formatted: true) == :ok
+        assert DotFormatter.format(dot_formatter, check_formatted: true) == :ok
       end
     end
 
     test "formats files modified after", context do
       in_tmp context do
-        unformatted = """
+        code = """
         foo bar baz
-        """
-
-        formatted = """
-        foo bar(baz)
         """
 
         write!(%{
@@ -827,9 +731,652 @@ defmodule Rewrite.DotFormatterTest do
             locals_without_parens: [foo: 1]
           ]
           """,
-          "a.ex" => unformatted,
-          "b.ex" => unformatted
+          "a.ex" => code,
+          "b.ex" => code
         })
+
+        now = now()
+        File.touch!("a.ex", now - 1234)
+        File.touch!("b.ex", now - 12)
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+
+        assert DotFormatter.format(dot_formatter, modified_after: now - 123) == :ok
+
+        assert read!("a.ex") == code
+
+        assert read!("b.ex") == """
+               foo bar(baz)
+               """
+      end
+    end
+  end
+
+  describe "format_rewrite/2" do
+    test "formats file", context do
+      in_tmp context do
+        write!("a.ex", "foo bar")
+
+        rewrite = Rewrite.new!("**/*")
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(DotFormatter.new(), rewrite)
+        assert read!(rewrite, "a.ex") == "foo(bar)\n"
+      end
+    end
+
+    test "uses inputs and configuration from .formatter.exs", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => """
+          foo bar baz
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*")
+        {:ok, dot_formatter} = DotFormatter.eval(rewrite)
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               foo bar(baz)
+               """
+
+        # update .formatter.exs
+
+        write!(".formatter.exs", """
+        [inputs: ["a.ex"]]
+        """)
+
+        rewrite = Rewrite.new!("**/*")
+
+        # with the old dot formatter
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               foo bar(baz)
+               """
+
+        {:ok, dot_formatter} = DotFormatter.eval(rewrite)
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               foo(bar(baz))
+               """
+      end
+    end
+
+    test "caches inputs from .formatter.exs", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: Path.wildcard("{a,b}.ex"),
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => """
+          foo bar baz
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*")
+
+        {:ok, dot_formatter} = DotFormatter.eval(rewrite)
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               foo bar(baz)
+               """
+
+        # add b.ex
+
+        write!("b.ex", """
+        bar baz bat
+        """)
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert Rewrite.source(rewrite, "b.ex") ==
+                 {:error, %Rewrite.Error{reason: :nosource, path: "b.ex"}}
+
+        rewrite = Rewrite.new!("**/*")
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "b.ex") == """
+               bar baz bat
+               """
+
+        {:ok, dot_formatter} = DotFormatter.eval(rewrite)
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "b.ex") == """
+               bar(baz(bat))
+               """
+      end
+    end
+
+    test "expands patterns in inputs from .formatter.exs", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["{a,.b}.ex"]
+          ]
+          """,
+          "a.ex" => """
+          foo bar
+          """,
+          ".b.ex" => """
+          foo bar
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               foo(bar)
+               """
+
+        assert read!(rewrite, ".b.ex") == """
+               foo(bar)
+               """
+      end
+    end
+
+    test "uses sigil plugins from .formatter.exs", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            plugins: [SigilWPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.ex" => """
+          if true do
+            ~W'''
+            foo bar baz
+            '''abc
+          end
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               if true do
+                 ~W'''
+                 foo
+                 bar
+                 baz
+                 '''abc
+               end
+               """
+      end
+    end
+
+    test "uses extension plugins from .formatter.exs", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.w"],
+            plugins: [ExtensionWPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.w" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.w") == """
+               foo
+               bar
+               baz
+               """
+      end
+    end
+
+    test "uses multiple plugins from .formatter.exs targeting the same file extension", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.w"],
+            plugins: [ExtensionWPlugin, NewlineToDotPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.w" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.w") == "foo.bar.baz."
+      end
+    end
+
+    test "uses multiple plugins from .formatter.exs with the same file extension in declared order",
+         context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.w"],
+            plugins: [NewlineToDotPlugin, ExtensionWPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.w" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.w") == "foo\nbar\nbaz."
+      end
+    end
+
+    test "uses multiple plugins from .formatter.exs targeting the same sigil", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            plugins: [NewlineToDotPlugin, SigilWPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.ex" => """
+          def sigil_test(assigns) do
+            ~W"foo bar baz\n"abc
+          end
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               def sigil_test(assigns) do
+                 ~W"foo\nbar\nbaz."abc
+               end
+               """
+      end
+    end
+
+    test "uses multiple plugins from .formatter.exs with the same sigil in declared order",
+         context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            plugins: [SigilWPlugin, NewlineToDotPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.ex" => """
+          def sigil_test(assigns) do
+            ~W"foo bar baz"abc
+          end
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               def sigil_test(assigns) do
+                 ~W"foo.bar.baz"abc
+               end
+               """
+      end
+    end
+
+    test "uses remaining plugin after removing another", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.w"],
+            plugins: [NewlineToDotPlugin, ExtensionWPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.w" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} =
+                 DotFormatter.format_rewrite(dot_formatter, rewrite,
+                   remove_plugins: [NewlineToDotPlugin]
+                 )
+
+        assert read!(rewrite, "a.w") == "foo\nbar\nbaz\n"
+      end
+    end
+
+    test "uses replaced plugin", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.w"],
+            plugins: [NewlineToDotPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.w" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} =
+                 DotFormatter.format_rewrite(dot_formatter, rewrite,
+                   replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}]
+                 )
+
+        assert read!(rewrite, "a.w") == "foo\nbar\nbaz\n"
+      end
+    end
+
+    test "uses replaced plugin in eval", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.w"],
+            plugins: [NewlineToDotPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          "a.w" => """
+          foo bar baz
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*")
+
+        {:ok, dot_formatter} =
+          DotFormatter.eval(replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}])
+
+        assert {:ok, rewrite} =
+                 DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.w") == "foo\nbar\nbaz\n"
+      end
+    end
+
+    test "uses inputs and configuration from :dot_formatter", context do
+      in_tmp context do
+        write!(%{
+          "custom_formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval(dot_formatter: "custom_formatter.exs")
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} =
+                 DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               foo bar(baz)
+               """
+      end
+    end
+
+    test "uses exported configuration from subdirectories", context do
+      in_tmp context do
+        # We also create a directory called li to ensure files
+        # from lib won't accidentally match on li.
+        code = """
+        my_fun :foo, :bar
+        other_fun :baz, :bang
+        """
+
+        write!(%{
+          ".formatter.exs" => """
+          [subdirectories: ["li", "lib"]]
+          """,
+          "li/.formatter.exs" => """
+          [inputs: "**/*", locals_without_parens: [other_fun: 2]]
+          """,
+          "lib/.formatter.exs" => """
+          [inputs: "a.ex", locals_without_parens: [my_fun: 2]]
+          """,
+          "li/a.ex" => code,
+          "lib/a.ex" => code,
+          "lib/b.ex" => code,
+          "other/a.ex" => code
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "li/a.ex") == """
+               my_fun(:foo, :bar)
+               other_fun :baz, :bang
+               """
+
+        assert read!(rewrite, "lib/a.ex") == """
+               my_fun :foo, :bar
+               other_fun(:baz, :bang)
+               """
+
+        assert read!(rewrite, "lib/b.ex") == code
+
+        assert read!(rewrite, "other/a.ex") == code
+      end
+    end
+
+    @tag :project
+    test "uses exported configuration from dependencies", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [import_deps: [:my_dep]]
+          """,
+          "a.ex" => """
+          my_fun :foo, :bar
+          """,
+          "deps/my_dep/.formatter.exs" => """
+          [export: [locals_without_parens: [my_fun: 2]]]
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "a.ex") == """
+               my_fun :foo, :bar
+               """
+      end
+    end
+
+    @tag :project
+    test "uses exported configuration from dependencies and subdirectories", context do
+      in_tmp context do
+        write!(%{
+          "deps/my_dep/.formatter.exs" => """
+          [export: [locals_without_parens: [my_fun: 2]]]
+          """,
+          ".formatter.exs" => """
+          [subdirectories: ["lib"]]
+          """,
+          "lib/.formatter.exs" => """
+          [subdirectories: ["*"]]
+          """,
+          "lib/sub/.formatter.exs" => """
+          [inputs: "a.ex", import_deps: [:my_dep]]
+          """,
+          "lib/sub/a.ex" => """
+          my_fun :foo, :bar
+          other_fun :baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "lib/sub/a.ex") == """
+               my_fun :foo, :bar
+               other_fun(:baz)
+               """
+
+        # Add a new entry to "lib".
+
+        write!(%{
+          "lib/extra/.formatter.exs" => """
+          [inputs: "a.ex", locals_without_parens: [other_fun: 1]]
+          """,
+          "lib/extra/a.ex" => """
+          my_fun :foo, :bar
+          other_fun :baz
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*")
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "lib/extra/a.ex") == """
+               my_fun :foo, :bar
+               other_fun :baz
+               """
+
+        # Eval new dot_formatter.
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
+
+        assert read!(rewrite, "lib/extra/a.ex") == """
+               my_fun(:foo, :bar)
+               other_fun :baz
+               """
+      end
+    end
+
+    test "uses inputs and configuration from .formatter.exs (check formatted)", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => """
+          foo bar baz
+          """
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
+        rewrite = Rewrite.new!("**/*")
+
+        error = %DotFormatterError{
+          reason: :format,
+          not_formatted: [{"a.ex", "foo bar baz\n", "foo bar(baz)\n"}],
+          exits: []
+        }
+
+        assert DotFormatter.format_rewrite(dot_formatter, rewrite, check_formatted: true) ==
+                 {:error, error}
+
+        assert Exception.message(error) == """
+               Format errors - \
+               Not formatted: ["a.ex"], \
+               Exits: []\
+               """
+
+        # update a.ex
+
+        write!("a.ex", """
+        foo bar(baz)
+        """)
+
+        assert {:error, _error} =
+                 DotFormatter.format_rewrite(dot_formatter, rewrite, check_formatted: true)
+
+        rewrite = Rewrite.new!("**/*")
+
+        assert DotFormatter.format_rewrite(dot_formatter, rewrite, check_formatted: true) == :ok
+      end
+    end
+
+    test "formats files modified after", context do
+      in_tmp context do
+        code = """
+        foo bar baz
+        """
+
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["*"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => code,
+          "b.ex" => code
+        })
+
+        {:ok, dot_formatter} = DotFormatter.eval()
 
         now = now()
         File.touch!("a.ex", now - 1234)
@@ -837,14 +1384,41 @@ defmodule Rewrite.DotFormatterTest do
 
         rewrite = Rewrite.new!("**/*")
 
-        assert DotFormatter.format(modified_after: now - 123) == :ok
-        assert {:ok, rewrite} = DotFormatter.format(rewrite, modified_after: now - 123)
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite, modified_after: now - 123)
 
-        assert read!("a.ex") == unformatted
-        assert read!(rewrite, "a.ex") == unformatted
-        assert read!("b.ex") == formatted
-        assert read!(rewrite, "b.ex") == formatted
+        assert read!(rewrite, "a.ex") == code
+        assert read!(rewrite, "b.ex") == """
+        foo bar(baz)
+        """
+
       end
+    end
+  end
+
+  describe "format_string/4" do
+    test "formats string" do
+      assert DotFormatter.format_string(
+               DotFormatter.new(),
+               "foo.ex",
+               "foo bar"
+             ) ==
+               {:ok,
+                """
+                foo(bar)
+                """}
+    end
+
+    test "formats string with opts" do
+      assert DotFormatter.format_string(
+               DotFormatter.new(),
+               "foo.ex",
+               "foo bar",
+               locals_without_parens: [foo: 1]
+             ) ==
+               {:ok,
+                """
+                foo bar
+                """}
     end
   end
 
@@ -853,7 +1427,7 @@ defmodule Rewrite.DotFormatterTest do
       in_tmp context do
         write!("a.exs", "")
 
-        assert DotFormatter.format_file("a.exs") == :ok
+        assert DotFormatter.format_file(DotFormatter.new(), "a.exs") == :ok
         assert read!("a.exs") == ""
       end
     end
@@ -861,21 +1435,77 @@ defmodule Rewrite.DotFormatterTest do
     test "removes line breaks in an empty file", context do
       in_tmp context do
         write!("a.exs", "  \n  \n  ")
-        DotFormatter.format_file("a.exs")
 
-        assert DotFormatter.format_file("a.exs") == :ok
+        assert DotFormatter.format_file(DotFormatter.new(), "a.exs") == :ok
         assert read!("a.exs") == ""
       end
     end
 
+    test "returns a syntax error", context do
+      in_tmp context do
+        write!("a.ex", """
+        defmodule <%= module %>.Bar do end
+        """)
+
+        assert DotFormatter.format_file(DotFormatter.new(), "a.ex") ==
+                 {:error,
+                  %SyntaxError{
+                    file: "a.ex",
+                    line: 1,
+                    column: 13,
+                    snippet: "defmodule <%= module %>.Bar do end",
+                    description: "syntax error before: '='"
+                  }}
+      end
+    end
+
     test "returns an error if the file doesn't exist" do
-      assert DotFormatter.format_file("nonexistent.exs") == {
+      assert DotFormatter.format_file(DotFormatter.new(), "nonexistent.exs") == {
                :error,
                %Rewrite.DotFormatterError{
                  reason: {:read, :enoent},
                  path: "nonexistent.exs"
                }
              }
+    end
+  end
+
+  describe "format_source/4" do
+    test "doesn't format empty files into line breaks", context do
+      in_tmp context do
+        write!("a.exs", "")
+
+        rewrite = Rewrite.new!("**/*")
+        assert {:ok, rewrite} = DotFormatter.format_source(DotFormatter.new(), rewrite, "a.exs")
+        assert read!(rewrite, "a.exs") == ""
+      end
+    end
+
+    test "removes line breaks in an empty file", context do
+      in_tmp context do
+        write!("a.exs", "  \n  \n  ")
+
+        rewrite = Rewrite.new!("**/*")
+        assert {:ok, rewrite} = DotFormatter.format_source(DotFormatter.new(), rewrite, "a.exs")
+        assert read!(rewrite, "a.exs") == ""
+      end
+    end
+
+    test "returns an error if the file doesn't exist", context do
+      in_tmp context do
+        rewrite = Rewrite.new!("**/*")
+
+        assert DotFormatter.format_source(DotFormatter.new(), rewrite, "nonexistent.exs") == {
+                 :error,
+                 %Rewrite.Error{
+                   __exception__: true,
+                   path: "nonexistent.exs",
+                   reason: :nosource,
+                   duplicated_paths: nil,
+                   missing_paths: nil
+                 }
+               }
+      end
     end
   end
 
@@ -1427,9 +2057,13 @@ defmodule Rewrite.DotFormatterTest do
 
     test "updates the dot_formatter", context do
       in_tmp context do
-        write!(".formatter.exs", """
-        [inputs: ["*.ex"]]
-        """, @time)
+        write!(
+          ".formatter.exs",
+          """
+          [inputs: ["*.ex"]]
+          """,
+          @time
+        )
 
         {:ok, dot_formatter} = DotFormatter.eval()
         rewrite = Rewrite.new!("**/*")
@@ -1451,13 +2085,17 @@ defmodule Rewrite.DotFormatterTest do
 
     test "updates the dot_formatter with opts", context do
       in_tmp context do
-        write!(".formatter.exs", """
-        [
-          inputs: ["*.ex"],
-          plugins: [SigilWPlugin],
-          from_formatter_exs: :yes
-        ]
-        """, @time)
+        write!(
+          ".formatter.exs",
+          """
+          [
+            inputs: ["*.ex"],
+            plugins: [SigilWPlugin],
+            from_formatter_exs: :yes
+          ]
+          """,
+          @time
+        )
 
         {:ok, dot_formatter} = DotFormatter.eval()
         rewrite = Rewrite.new!("**/*")
