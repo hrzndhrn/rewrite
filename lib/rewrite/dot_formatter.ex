@@ -120,26 +120,8 @@ defmodule Rewrite.DotFormatter do
 
   defp new(term, dot_formatter_path, timestamp) do
     source = Path.basename(dot_formatter_path)
-
-    path =
-      dot_formatter_path
-      |> Path.dirname()
-      |> Path.relative_to("./")
-
-    path = if path == @root, do: "", else: path
-
-    {formatter_opts, plugin_opts} =
-      term
-      |> Keyword.update(:inputs, nil, fn inputs ->
-        inputs
-        |> List.wrap()
-        |> Enum.map(fn input ->
-          path
-          |> Path.join(input)
-          |> GlobEx.compile!(match_dot: true)
-        end)
-      end)
-      |> Keyword.split(@formatter_opts)
+    path = relative_to_cwd(dot_formatter_path)
+    {formatter_opts, plugin_opts} = extract_options(term, path)
 
     data =
       formatter_opts
@@ -155,6 +137,29 @@ defmodule Rewrite.DotFormatter do
   rescue
     error in KeyError ->
       {:error, %DotFormatterError{reason: {:unexpected_format, {error.key, error.term}}}}
+  end
+
+  defp relative_to_cwd(path) do
+    path =
+      path
+      |> Path.dirname()
+      |> Path.relative_to_cwd()
+
+    if path == @root, do: "", else: path
+  end
+
+  defp extract_options(term, path) do
+    term
+    |> Keyword.update(:inputs, nil, fn inputs ->
+      inputs
+      |> List.wrap()
+      |> Enum.map(fn input ->
+        path
+        |> Path.join(input)
+        |> GlobEx.compile!(match_dot: true)
+      end)
+    end)
+    |> Keyword.split(@formatter_opts)
   end
 
   defp validate(term, dot_formatter_path, path) do
