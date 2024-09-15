@@ -157,7 +157,13 @@ defmodule RewriteTest do
       File.chmod(file, 0o644)
     end
 
-    test "throws an error for a syntax error in code"
+    test "throws a syntax error in code" do
+      inputs = ["test/fixtures/error.ex"]
+
+      assert_raise SyntaxError, fn ->
+        Rewrite.new!(inputs) 
+      end
+    end
   end
 
   describe "read!/2" do
