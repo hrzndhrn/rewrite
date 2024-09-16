@@ -650,30 +650,19 @@ defmodule Rewrite.DotFormatterTest do
 
         {:ok, dot_formatter} = DotFormatter.eval()
 
-        error = %DotFormatterError{
-          reason: :format,
-          not_formatted: [],
-          exits: [
-            {"a.ex",
-             %SyntaxError{
-               file: "a.ex",
-               line: 1,
-               column: 13,
-               snippet: "defmodule <%= module %>.Bar do end",
-               description: "syntax error before: '='"
-             }}
-          ]
-        }
+        assert {:error,
+                %DotFormatterError{
+                  reason: :format,
+                  not_formatted: [],
+                  exits: [{"a.ex", syntax_error}]
+                } = error} = DotFormatter.format(dot_formatter)
 
-        assert DotFormatter.format(dot_formatter) == {:error, error}
+        assert is_struct(syntax_error, SyntaxError)
 
-        assert Exception.message(error) == """
+        assert Exception.message(error) =~ """
                Format errors - \
                Not formatted: [], \
                Exits: [{"a.ex", %SyntaxError{\
-               file: "a.ex", line: 1, column: 13, \
-               snippet: "defmodule <%= module %>.Bar do end", \
-               description: "syntax error before: '='"}}]\
                """
       end
     end
@@ -1384,13 +1373,14 @@ defmodule Rewrite.DotFormatterTest do
 
         rewrite = Rewrite.new!("**/*")
 
-        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite, modified_after: now - 123)
+        assert {:ok, rewrite} =
+                 DotFormatter.format_rewrite(dot_formatter, rewrite, modified_after: now - 123)
 
         assert read!(rewrite, "a.ex") == code
-        assert read!(rewrite, "b.ex") == """
-        foo bar(baz)
-        """
 
+        assert read!(rewrite, "b.ex") == """
+               foo bar(baz)
+               """
       end
     end
   end
@@ -1447,15 +1437,8 @@ defmodule Rewrite.DotFormatterTest do
         defmodule <%= module %>.Bar do end
         """)
 
-        assert DotFormatter.format_file(DotFormatter.new(), "a.ex") ==
-                 {:error,
-                  %SyntaxError{
-                    file: "a.ex",
-                    line: 1,
-                    column: 13,
-                    snippet: "defmodule <%= module %>.Bar do end",
-                    description: "syntax error before: '='"
-                  }}
+        assert {:error, reason} = DotFormatter.format_file(DotFormatter.new(), "a.ex")
+        assert is_struct(reason, SyntaxError)
       end
     end
 

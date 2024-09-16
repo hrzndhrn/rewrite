@@ -1,5 +1,15 @@
 defmodule Rewrite.DotFormatter do
-  # TODO: @moduledoc
+  @moduledoc """
+  Provides an alternative API to the Elixir formatter.
+
+  TODO: add more details:
+    * bebaves like mix format
+    * provides a function to format an Elixir AST
+    * can remove and replace plugins. Removing plugins are usedfull for packages
+      that uses rewrite and they provide a mis task and an own formatter plugin.
+      Replacing plugins is needed to support the formatting of an Elixir AST and 
+      to wrap third party plugins.
+  """
 
   alias Rewrite.DotFormatter
   alias Rewrite.DotFormatterError
@@ -35,13 +45,26 @@ defmodule Rewrite.DotFormatter do
 
   defstruct @formatter_opts ++ @dot_formatter_fields
 
+  @doc """
+  Evaluates the `.formatter.exs` file in the current directory or the given 
+  `project`.
+
+  ## Options
+
+    * `remove_plugins` - a list of plugins to remove from the formatter.
+
+    * `replace_plugins` - a list of `{old, new}` tuples to replace plugins in 
+      the formatter.
+  """
+  @spec eval(project :: Rewrite.t(), opts :: keyword()) ::
+          {:ok, t()} | {:error, DotFormatterError.t()}
   def eval(project \\ nil, opts \\ [])
 
   def eval(opts, []) when is_list(opts), do: eval(nil, opts)
 
   def eval(project, opts), do: do_eval(project, opts, @root)
 
-  def do_eval(project, opts, path) do
+  defp do_eval(project, opts, path) do
     dot_formatter_path = dot_formatter_path(path, opts)
     opts = Keyword.put(opts, :reload_plugins, false)
 
@@ -55,6 +78,14 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
+  @doc """
+  Updates the given `dot_formatter`.
+
+  The function checks if the `dot_formatter` is up to date. If not, the `eval` 
+  function is called.
+
+  Accepts the same options as `eval/2`.
+  """
   def update(dot_formatter, project \\ nil, opts \\ [])
 
   def update(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts),
@@ -247,35 +278,16 @@ defmodule Rewrite.DotFormatter do
   # * make dot_formatter arg mandatory
   # * write own function for rewrite: format_rewrite/3
   #   * this function get @doc false and will be called by Rewrite.format/3
-  @spec format(t() | nil, keyword()) :: :ok | {:error, DotFormatterError.t()}
-  # def format(dot_formatter \\ nil, project \\ nil, opts \\ [])
-  #
-  # def format(opts, nil, []) when is_list(opts) do
-  #   format(nil, nil, opts)
-  # end
-  #
-  # def format(%Rewrite{} = project, opts, []) when is_list(opts) do
-  #   with {:ok, dot_formatter} <- eval(project, opts) do
-  #     format(dot_formatter, project, opts)
-  #   end
-  # end
-  #
-  # def format(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts) do
-  #   format(dot_formatter, nil, opts)
-  # end
-  #
-  # def format(%Rewrite{} = project, nil, opts) do
-  #   with {:ok, dot_formatter} <- eval(project, opts) do
-  #     format(dot_formatter, project, opts)
-  #   end
-  # end
-  #
-  # def format(nil, nil, opts) do
-  #   with {:ok, dot_formatter} <- eval(nil, opts) do
-  #     format(dot_formatter, nil, opts)
-  #   end
-  # end
+  @doc """
+  Formats the files in the current directory that are specified by the given 
+  `dot_formatter`.
 
+  The options are the same as for `Code.format_string!/2`, except for `:file` 
+  and `:line`. 
+
+  To format a `%Rewrite{}` project, use `Rewrite.format/3`.
+  """
+  @spec format(t() | nil, keyword()) :: :ok | {:error, DotFormatterError.t()}
   def format(%DotFormatter{} = dot_formatter, opts \\ []) when is_list(opts) do
     with {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
       dot_formatter
@@ -289,20 +301,6 @@ defmodule Rewrite.DotFormatter do
       |> check()
     end
   end
-
-  # def format(%DotFormatter{} = dot_formatter, %Rewrite{} = project, opts) do
-  #   with {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
-  #     dot_formatter
-  #     |> expand(project, opts)
-  #     |> Task.async_stream(
-  #       async_stream_formatter(project, opts),
-  #       ordered: false,
-  #       timeout: :infinity
-  #     )
-  #     |> Enum.reduce({[], []}, &collect_status/2)
-  #     |> update_source(project, opts)
-  #   end
-  # end
 
   @doc false
   @spec format_rewrite(t(), Rewrite.t(), keyword()) ::
@@ -443,6 +441,8 @@ defmodule Rewrite.DotFormatter do
   # TODO:
   # * add @doc false
   # * call this function by Rewrite.format_source/3
+  
+  @doc false
   def format_source(%DotFormatter{} = dot_formatter, %Rewrite{} = project, file, opts \\ []) do
     Rewrite.update(project, file, fn source ->
       content = Source.get(source, :content)
@@ -472,6 +472,12 @@ defmodule Rewrite.DotFormatter do
     |> Enum.concat(dot_formatter.plugin_opts)
   end
 
+  @doc """
+  Returns a list of `{path, formatter}` tuples for the given `dot_formatter`.
+
+  The formatter is a two arrity function that takes a string as input and 
+  options to format the string. For more information see `formatter_for_file/3`.
+  """
   @spec expand(t(), Rewrite.t() | nil, keyword()) :: [{Path.t(), formatter()}]
   def expand(dot_formatter, project \\ nil, opts \\ [])
 
