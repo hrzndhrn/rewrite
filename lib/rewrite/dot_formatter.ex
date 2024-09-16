@@ -86,6 +86,7 @@ defmodule Rewrite.DotFormatter do
 
   Accepts the same options as `eval/2`.
   """
+  @spec update(t(), Rewrite.t(), opts :: keyword()) :: {:ok, t()} | {:error, DotFormatterError.t()}
   def update(dot_formatter, project \\ nil, opts \\ [])
 
   def update(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts),
@@ -147,6 +148,12 @@ defmodule Rewrite.DotFormatter do
     Path.join(path, @defaul_dot_formatter)
   end
 
+  @doc """
+  Returns an empty `%DotFormatter{}` struct with inputs set to `**/*`.
+
+  This is useful when no `.formatter.exs` file is present.
+  """
+  @spec new :: DotFormatter.t()
   def new, do: %DotFormatter{inputs: [GlobEx.compile!("**/*")]}
 
   defp new(term, dot_formatter_path, timestamp) do
@@ -419,6 +426,12 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
+  @doc """
+  Formats the given `file` using the given `dot_formatter` and `opts`.
+
+  The options are the same as for `Code.format_string!/2`.
+  """
+  @spec format_file(t(), Path.t(), opts :: keyword()) :: :ok | {:error, DotFormatterError.t()}
   def format_file(%DotFormatter{} = dot_formatter, file, opts \\ []) do
     with {:ok, content} <- read(file),
          {:ok, formatted} <- format_string(dot_formatter, file, content, opts) do
