@@ -1452,7 +1452,7 @@ defmodule Rewrite.DotFormatterTest do
         assert is_struct(error, DotFormatterError)
 
         assert Exception.message(error) == """
-               No dot-formatters specifies the file \"a.ex\" in his :inputs options\
+               No formatter specifies the file "a.ex" in its :inputs option\
                """
       end
     end
@@ -1501,7 +1501,7 @@ defmodule Rewrite.DotFormatterTest do
         assert is_struct(error, DotFormatterError)
 
         assert Exception.message(error) == """
-               No dot-formatters specifies the file \"a.ex\" in his :inputs options\
+               No formatter specifies the file "a.ex" in its :inputs option\
                """
       end
     end
@@ -1748,7 +1748,7 @@ defmodule Rewrite.DotFormatterTest do
         )
 
         assert {:error, error} = DotFormatter.read()
-        assert Exception.message(error) == "Invlaid input, got: :invalid"
+        assert Exception.message(error) == "Invalid input, got: :invalid"
       end
     end
 
@@ -2644,7 +2644,7 @@ defmodule Rewrite.DotFormatterTest do
         assert is_struct(error, DotFormatterError)
 
         assert Exception.message(error) == """
-               No dot-formatters specifies the file "foo/a.ex" in his :inputs options\
+               No formatter specifies the file "foo/a.ex" in its :inputs option\
                """
       end
     end

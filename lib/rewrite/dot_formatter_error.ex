@@ -61,7 +61,7 @@ defmodule Rewrite.DotFormatterError do
   end
 
   def message(%{reason: {:invalid_dot_formatter, []}, path: path}) do
-    "No dot-formatters specifies the file #{inspect(path)} in his :inputs options"
+    "No formatter specifies the file #{inspect(path)} in its :inputs option"
   end
 
   def message(%{reason: {:undefined_quoted_to_algebra, plugin}}) do
@@ -81,7 +81,7 @@ defmodule Rewrite.DotFormatterError do
   end
 
   def message(%{reason: {:invalid_input, input}}) do
-    "Invlaid input, got: #{inspect(input)}"
+    "Invalid input, got: #{inspect(input)}"
   end
 
   def message(%{reason: {:no_subs, dirs}}) do
