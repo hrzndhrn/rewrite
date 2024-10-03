@@ -14,7 +14,7 @@ defmodule Rewrite.Source.ExTest do
     end
   end
 
-  describe "from_string3" do
+  describe "from_string/3" do
     test "creates an ex source from string" do
       assert %Source{} = source = Source.Ex.from_string(":a")
       assert is_struct(source.filetype, Ex)

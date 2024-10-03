@@ -29,7 +29,7 @@ defmodule Rewrite do
       `sources` of the corresponding files. The list can contain modules 
       representing a file type or a tuple of `{module(), keyword()}`. Rewrite 
       uses the keyword list from the tuple as the options argument when a file
-      is reading.
+      is read.
 
       Defaults to `[Rewrite.Source, Rewrite.Source.Ex]`.
 
