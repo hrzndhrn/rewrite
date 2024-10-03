@@ -1,6 +1,6 @@
 defmodule Rewrite.Source.Ex do
   @moduledoc ~s'''
-  An implementation of `Rewrite.Filetye` to handle Elixir source files.
+  An implementation of `Rewrite.Filetype` to handle Elixir source files.
 
   The module uses the [`sourceror`](https://github.com/doorgan/sourceror) package
   to provide an [extended AST](https://hexdocs.pm/sourceror/readme.html#sourceror-s-ast)
