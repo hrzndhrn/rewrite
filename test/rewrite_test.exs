@@ -935,7 +935,7 @@ defmodule RewriteTest do
   end
 
   describe "dot_formatter/1/2" do
-    test "returns an default dot formatter" do
+    test "returns a default dot formatter" do
       project = Rewrite.new()
       assert Rewrite.dot_formatter(project) == DotFormatter.new()
     end
