@@ -70,7 +70,7 @@ defmodule Rewrite.Source do
 
     * `content` - of the `source`.
 
-    * `filetype` - a `struct` implementig the behaviour `Rewrite.Filetype`.
+    * `filetype` - a `struct` implementing the behaviour `Rewrite.Filetype`.
       The `filetype` is nil when no additional implementation for the `filetype`
       is available.
 
