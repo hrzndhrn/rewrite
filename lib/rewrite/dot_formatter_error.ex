@@ -1,7 +1,7 @@
 defmodule Rewrite.DotFormatterError do
   defexception [:reason, :path, :not_formatted, :exits]
 
-  @type t :: %{reason: reason(), path: Path.t(), not_formatted: [Paths.t()], exits: exits()}
+  @type t :: %{reason: reason(), path: Path.t(), not_formatted: [Path.t()], exits: exits()}
 
   @type reason :: atom() | {atom(), term()}
   @type exits :: any()
@@ -46,5 +46,45 @@ defmodule Rewrite.DotFormatterError do
     """
     Format errors - Not formatted: #{inspect(not_formatted)}, Exits: #{inspect(exits)}\
     """
+  end
+
+  def message(%{reason: {:invalid_dot_formatter, [_ | _] = dot_formatters}, path: path}) do
+    dot_formatters =
+      Enum.map(dot_formatters, fn dot_formatter ->
+        Path.join(dot_formatter.path, dot_formatter.source)
+      end)
+
+    """
+    Multiple dot-formatters specifying the file #{inspect(path)} in their :inputs \
+    options, dot-formatters: #{inspect(dot_formatters)}\
+    """
+  end
+
+  def message(%{reason: {:invalid_dot_formatter, []}, path: path}) do
+    "No dot-formatters specifies the file #{inspect(path)} in his :inputs options"
+  end
+
+  def message(%{reason: {:undefined_quoted_to_algebra, plugin}}) do
+    """
+    The plugin #{inspect(plugin)} replaces the Elixir formatter. Therefore, the \
+    plugin needs to be replaced with a wrapped plugin that implements the \
+    Rewrite.DotFormatter behaviour. 
+    A plugin can be replaced by:
+
+      DotFormatter.eval(replace_plugins: [{#{inspect(plugin)}, WrapPlugin}])
+
+    """
+  end
+
+  def message(%{reason: %GlobEx.CompileError{} = error}) do
+    "Invalid glob #{inspect(error.input)}, #{Exception.message(error)}"
+  end
+
+  def message(%{reason: {:invalid_input, input}}) do
+    "Invlaid input, got: #{inspect(input)}"
+  end
+
+  def message(%{reason: {:no_subs, dirs}}) do
+    "No sub formatter found in #{inspect(dirs)}"
   end
 end

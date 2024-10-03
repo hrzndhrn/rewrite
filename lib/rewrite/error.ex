@@ -1,6 +1,6 @@
 defmodule Rewrite.Error do
   @moduledoc """
-  An exception for when a function can not handle a source.
+  An exception for when a function cannot handle a source.
   """
 
   alias Rewrite.Error

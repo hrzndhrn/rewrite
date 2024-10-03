@@ -1,14 +1,14 @@
 defmodule Rewrite.DotFormatter do
   @moduledoc """
-  Provides an alternative API to the Elixir formatter.
+  Provides an alternative API to the Elixir dot formatter.
 
   TODO: add more details:
     * bebaves like mix format
     * provides a function to format an Elixir AST
     * can remove and replace plugins. Removing plugins are usedfull for packages
-      that uses rewrite and they provide a mis task and an own formatter plugin.
-      Replacing plugins is needed to support the formatting of an Elixir AST and 
-      to wrap third party plugins.
+      that uses rewrite and they provide a mix task and an own formatter plugin.
+      Replacing plugins is needed to support the formatting of an Elixir AST and
+      to wrap third party plugins. we need quo
   """
 
   alias Rewrite.DotFormatter
@@ -16,12 +16,29 @@ defmodule Rewrite.DotFormatter do
   alias Rewrite.Source
 
   @type formatter :: (term() -> term())
+  @type timestamp :: integer()
 
-  # TODO: exapnd type and typedoc
-  @type t :: map()
+  @type t :: %DotFormatter{
+          force_do_end_blocks: boolean() | nil,
+          import_deps: [atom()] | nil,
+          inputs: [GlobEx.t()] | nil,
+          locals_without_parens: [{atom(), arity()}] | nil,
+          normalize_bitstring_modifiers: boolean() | nil,
+          normalize_charlists_as_sigils: boolean() | nil,
+          path: Path.t() | nil,
+          plugin_opts: keyword(),
+          plugins: [module()] | nil,
+          sigils: [{atom(), function()}] | nil,
+          source: String.t() | nil,
+          subdirectories: [GlobEx.t()] | nil,
+          subs: [t()],
+          timestamp: timestamp() | nil
+        }
 
   @root "."
   @defaul_dot_formatter ".formatter.exs"
+
+  @elixit_extensions [".ex", ".exs"]
 
   @formatter_opts [
     :force_do_end_blocks,
@@ -46,57 +63,128 @@ defmodule Rewrite.DotFormatter do
   defstruct @formatter_opts ++ @dot_formatter_fields
 
   @doc """
-  Evaluates the `.formatter.exs` file in the current directory or the given 
-  `project`.
+  Returns which features this plugin should plug into.
+  """
+  @callback features(Keyword.t()) :: [sigils: [atom()], extensions: [binary()]]
+
+  @doc """
+  Receives a string to be formatted with options and returns said string.
+  """
+  @callback format(String.t(), keyword()) :: String.t()
+
+  @doc """
+  Converts a quoted expression to an algebra document using Elixir's formatter
+  rules.
+
+  This function works as an replacement for `Code.quoted_to_algebra/2`.
+  """
+  @callback quoted_to_algebra(Macro.t(), keyword()) :: Inspect.Algebra.t()
+
+  @doc """
+  Reads the `.formatter.exs` file in the current directory or the given
+  `%Rwrite{}` project.
+
+  If a `%Rewrite{}` project is given to the function, the formatter is searched 
+  in the project and the latest version from the source is used. As a fallback, 
+  it will search the file system for the required files.
+
+  The function returns a `%DotFormatter{}` struct with all sub-formatters.
 
   ## Options
 
     * `remove_plugins` - a list of plugins to remove from the formatter.
 
-    * `replace_plugins` - a list of `{old, new}` tuples to replace plugins in 
+    * `replace_plugins` - a list of `{old, new}` tuples to replace plugins in
       the formatter.
   """
-  @spec eval(project :: Rewrite.t(), opts :: keyword()) ::
+  @spec read(rewrite :: Rewrite.t() | nil, keyword()) ::
           {:ok, t()} | {:error, DotFormatterError.t()}
-  def eval(project \\ nil, opts \\ [])
+  def read(rewrite \\ nil, opts \\ [])
 
-  def eval(opts, []) when is_list(opts), do: eval(nil, opts)
+  def read(opts, []) when is_list(opts), do: read(nil, opts)
 
-  def eval(project, opts), do: do_eval(project, opts, @root)
+  def read(rewrite, opts), do: read(rewrite, opts, @root)
 
-  defp do_eval(project, opts, path) do
+  defp read(rewrite, opts, path) do
     dot_formatter_path = dot_formatter_path(path, opts)
     opts = Keyword.put(opts, :reload_plugins, false)
 
-    with {:ok, term, timestamp} <- eval_dot_formatter(project, dot_formatter_path),
-         {:ok, term} <- validate(term, dot_formatter_path, path),
+    with {:ok, term, timestamp} <- read_dot_formatter(rewrite, dot_formatter_path) do
+      eval(rewrite, opts, path, dot_formatter_path, term, timestamp)
+    end
+  end
+
+  defp eval(rewrite, opts, path, dot_formatter_path, term, timestamp) do
+    with {:ok, term} <- validate(term, dot_formatter_path, path),
          {:ok, dot_formatter} <- new(term, dot_formatter_path, timestamp),
          {:ok, dot_formatter} <- eval_deps(dot_formatter),
-         {:ok, dot_formatter} <- eval_subs(dot_formatter, project, opts),
-         {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
-      load_plugins(dot_formatter)
+         {:ok, dot_formatter} <- eval_subs(dot_formatter, rewrite, opts),
+         {:ok, dot_formatter} <- update_plugins(dot_formatter, opts),
+         {:ok, dot_formatter} <- load_plugins(dot_formatter) do
+      check_ex_plugins(dot_formatter)
+    end
+  end
+
+  @doc """
+  Same as `read/2`, but raises a `Rewrite.DotFormatterError` exception
+  in case of failure.
+  """
+  @spec read!(rewrite :: Rewrite.t() | nil, keyword()) :: t()
+  def read!(rewrite \\ nil, opts \\ []) do
+    case read(rewrite, opts) do
+      {:ok, dot_formatter} -> dot_formatter
+      {:error, reason} -> raise reason
+    end
+  end
+
+  @doc """
+  Returns a `%DotFormatter` for the given `config`.
+
+  The `config` has the same format as the `.formatter.exs` file.
+  """
+  @spec create(Rewrite.t() | nil, keyword()) :: {:ok, t()} | {:error, DotFormatterError.t()}
+  def create(rewrite \\ nil, config) do
+    opts = [reload_plugins: false]
+    dot_formatter_path = @defaul_dot_formatter
+    path = @root
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+
+    eval(rewrite, opts, path, dot_formatter_path, config, timestamp)
+  end
+
+  @doc """
+  Same as `create/2`, but raises a `Rewrite.DotFormatterError` exception
+  in case of failure.
+  """
+  @spec create!(Rewrite.t() | nil, keyword()) :: t()
+  def create!(rewrite \\ nil, config) do
+    case create(rewrite, config) do
+      {:ok, dot_formatter} -> dot_formatter
+      {:error, error} -> raise error
     end
   end
 
   @doc """
   Updates the given `dot_formatter`.
 
-  The function checks if the `dot_formatter` is up to date. If not, the `eval` 
+  The function checks if the `dot_formatter` is up to date. If not, the `eval`
   function is called.
 
   Accepts the same options as `eval/2`.
   """
-  @spec update(t(), Rewrite.t(), opts :: keyword()) :: {:ok, t()} | {:error, DotFormatterError.t()}
-  def update(dot_formatter, project \\ nil, opts \\ [])
+  @spec update(t(), Rewrite.t() | keyword() | nil, keyword()) ::
+          {:ok, t()} | {:error, DotFormatterError.t()}
+  def update(dot_formatter, rewrite \\ nil, opts \\ [])
 
-  def update(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts),
-    do: update(dot_formatter, nil, opts)
+  def update(%DotFormatter{} = dot_formatter, opts, []) when is_list(opts) do
+    update(dot_formatter, nil, opts)
+  end
 
-  def update(%DotFormatter{} = dot_formatter, project, opts) do
-    if up_to_date?(dot_formatter, project) do
+  def update(%DotFormatter{} = dot_formatter, rewrite, opts) do
+    if up_to_date?(dot_formatter, rewrite) do
       {:ok, dot_formatter}
     else
-      eval(project, opts)
+      read(rewrite, opts)
     end
   end
 
@@ -110,6 +198,22 @@ defmodule Rewrite.DotFormatter do
       reload_plugins(updated, dot_formatter)
     else
       {:ok, updated}
+    end
+  end
+
+  defp check_ex_plugins(%{plugins: plugins} = dot_formatter) do
+    formatter_opts = formatter_opts(dot_formatter)
+
+    case plugins_for_extensions(plugins, formatter_opts, @elixit_extensions) do
+      [plugin | _] ->
+        if function_exported?(plugin, :quoted_to_algebra, 2) do
+          {:ok, dot_formatter}
+        else
+          {:error, %DotFormatterError{reason: {:undefined_quoted_to_algebra, plugin}}}
+        end
+
+      _plugins ->
+        {:ok, dot_formatter}
     end
   end
 
@@ -127,13 +231,19 @@ defmodule Rewrite.DotFormatter do
 
   defp replace_plugins(dot_formatter, replace_plugins) do
     map(dot_formatter, fn dot_formatter ->
-      Map.update!(dot_formatter, :plugins, fn plugins ->
-        Enum.map(plugins, fn plugin ->
-          Enum.find_value(replace_plugins, plugin, fn {old, new} ->
-            if plugin == old, do: new
-          end)
-        end)
-      end)
+      do_replace_plugins(dot_formatter, replace_plugins)
+    end)
+  end
+
+  defp do_replace_plugins(dot_formatter, replace_plugins) do
+    Map.update!(dot_formatter, :plugins, fn plugins ->
+      Enum.map(plugins, fn plugin -> new_plugin(replace_plugins, plugin) end)
+    end)
+  end
+
+  defp new_plugin(replace_plugins, plugin) do
+    Enum.find_value(replace_plugins, plugin, fn {old, new} ->
+      if plugin == old, do: new
     end)
   end
 
@@ -153,28 +263,28 @@ defmodule Rewrite.DotFormatter do
 
   This is useful when no `.formatter.exs` file is present.
   """
-  @spec new :: DotFormatter.t()
+  @spec new :: t()
   def new, do: %DotFormatter{inputs: [GlobEx.compile!("**/*")]}
 
   defp new(term, dot_formatter_path, timestamp) do
     source = Path.basename(dot_formatter_path)
     path = relative_to_cwd(dot_formatter_path)
-    {formatter_opts, plugin_opts} = extract_options(term, path)
 
-    data =
-      formatter_opts
-      |> Keyword.put_new(:plugins, [])
-      |> Keyword.merge(
-        source: source,
-        path: path,
-        plugin_opts: plugin_opts,
-        timestamp: timestamp
-      )
+    with {:ok, term} <- update_inputs(term, path) do
+      {formatter_opts, plugin_opts} = Keyword.split(term, @formatter_opts)
 
-    {:ok, struct!(__MODULE__, data)}
-  rescue
-    error in KeyError ->
-      {:error, %DotFormatterError{reason: {:unexpected_format, {error.key, error.term}}}}
+      data =
+        formatter_opts
+        |> Keyword.put_new(:plugins, [])
+        |> Keyword.merge(
+          source: source,
+          path: path,
+          plugin_opts: plugin_opts,
+          timestamp: timestamp
+        )
+
+      {:ok, struct!(__MODULE__, data)}
+    end
   end
 
   defp relative_to_cwd(path) do
@@ -186,18 +296,29 @@ defmodule Rewrite.DotFormatter do
     if path == @root, do: "", else: path
   end
 
-  defp extract_options(term, path) do
-    term
-    |> Keyword.update(:inputs, nil, fn inputs ->
-      inputs
-      |> List.wrap()
-      |> Enum.map(fn input ->
-        path
-        |> Path.join(input)
-        |> GlobEx.compile!(match_dot: true)
-      end)
-    end)
-    |> Keyword.split(@formatter_opts)
+  defp update_inputs(term, path) do
+    case Keyword.fetch(term, :inputs) do
+      {:ok, inputs} ->
+        with {:ok, inputs} <- inputs |> List.wrap() |> update_inputs(path, []) do
+          {:ok, Keyword.put(term, :inputs, inputs)}
+        end
+
+      :error ->
+        {:ok, term}
+    end
+  end
+
+  defp update_inputs([], _path, acc), do: {:ok, acc}
+
+  defp update_inputs([input | inputs], path, acc) when is_binary(input) do
+    case path |> Path.join(input) |> GlobEx.compile(match_dot: true) do
+      {:ok, glob} -> update_inputs(inputs, path, [glob | acc])
+      {:error, reason} -> {:error, %DotFormatterError{reason: reason}}
+    end
+  end
+
+  defp update_inputs([input | _inputs], _path, _acc) do
+    {:error, %DotFormatterError{reason: {:invalid_input, input}}}
   end
 
   defp validate(term, dot_formatter_path, path) do
@@ -233,7 +354,7 @@ defmodule Rewrite.DotFormatter do
   end
 
   @doc """
-  Returns the `%DotFormatter{}` struct for the given `path` or `nil` when not 
+  Returns the `%DotFormatter{}` struct for the given `path` or `nil` when not
   found.
   """
   @spec get(t(), path :: Path.t()) :: t()
@@ -251,7 +372,7 @@ defmodule Rewrite.DotFormatter do
   The function only checks the timestamps in the `dot_formatter` struct with the
   timestamp of the underlying file or source in the `project`.
   """
-  @spec up_to_date?(t(), project :: Rewrite.t()) :: boolean()
+  @spec up_to_date?(t(), project :: Rewrite.t() | nil) :: boolean()
   def up_to_date?(dot_formatter, project \\ nil) do
     dot_formatter
     |> reduce(fn dot_formatter, acc ->
@@ -281,16 +402,11 @@ defmodule Rewrite.DotFormatter do
 
   defp file(dot_formatter), do: Path.join(dot_formatter.path, dot_formatter.source)
 
-  # TODO: 
-  # * make dot_formatter arg mandatory
-  # * write own function for rewrite: format_rewrite/3
-  #   * this function get @doc false and will be called by Rewrite.format/3
   @doc """
-  Formats the files in the current directory that are specified by the given 
+  Formats the files in the current directory that are specified by the given
   `dot_formatter`.
 
-  The options are the same as for `Code.format_string!/2`, except for `:file` 
-  and `:line`. 
+  The options are the same as for `DotFormatter.read/2`.
 
   To format a `%Rewrite{}` project, use `Rewrite.format/3`.
   """
@@ -403,11 +519,8 @@ defmodule Rewrite.DotFormatter do
   defp check({[], []}), do: :ok
 
   defp check({exits, not_formatted}) do
-    # TODO: error handling refactoring
     {:error, %DotFormatterError{reason: :format, not_formatted: not_formatted, exits: exits}}
   end
-
-  # TODO: check exits
 
   defp update_source({[], formatted} = result, project, opts) do
     if Keyword.get(opts, :check_formatted, false) do
@@ -431,15 +544,15 @@ defmodule Rewrite.DotFormatter do
 
   The options are the same as for `Code.format_string!/2`.
   """
-  @spec format_file(t(), Path.t(), opts :: keyword()) :: :ok | {:error, DotFormatterError.t()}
+  @spec format_file(t(), Path.t(), keyword()) :: :ok | {:error, DotFormatterError.t()}
   def format_file(%DotFormatter{} = dot_formatter, file, opts \\ []) do
-    with {:ok, content} <- read(file),
+    with {:ok, content} <- read_file(file),
          {:ok, formatted} <- format_string(dot_formatter, file, content, opts) do
       write(file, formatted)
     end
   end
 
-  defp read(path) do
+  defp read_file(path) do
     with {:error, reason} <- File.read(path) do
       {:error, %DotFormatterError{reason: {:read, reason}, path: path}}
     end
@@ -451,10 +564,6 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  # TODO:
-  # * add @doc false
-  # * call this function by Rewrite.format_source/3
-  
   @doc false
   def format_source(%DotFormatter{} = dot_formatter, %Rewrite{} = project, file, opts \\ []) do
     Rewrite.update(project, file, fn source ->
@@ -466,6 +575,18 @@ defmodule Rewrite.DotFormatter do
     end)
   end
 
+  @doc """
+  Formats the given `string` using the specified `dot_formatter`, `file`, and
+  `options`.
+
+  The `file` is used to determine the formatter. If no formatter is found, an
+  error tuple is returned.
+
+  Returns an :ok tuple with the formatted string on success, or an error tuple 
+  on failure.
+  """
+  @spec format_string(t(), Path.t(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
   def format_string(dot_formatter, file, string, opts \\ []) do
     opts = Keyword.put_new(opts, :file, file)
 
@@ -476,8 +597,57 @@ defmodule Rewrite.DotFormatter do
     error in SyntaxError -> {:error, error}
   end
 
-  # TODO: def format_quoted/4
+  @doc """
+  Same as `format_string/4`, but raises a `Rewrite.DotFormatterError` exception
+  in case of failure.
+  """
+  @spec format_string!(t(), Path.t(), String.t(), keyword()) :: String.t()
+  def format_string!(dot_formatter, file, string, opts \\ []) do
+    case format_string(dot_formatter, file, string, opts) do
+      {:ok, formatted} -> formatted
+      {:error, reason} -> raise reason
+    end
+  end
 
+  @doc """
+  Converts the given `quoted` expression to a string using the given
+  `dot_formatter`, `file` and `opts`.
+
+  The `file` is used to determine the formatter. If no formatter is found, an
+  error tuple is returned.
+
+  Returns an :ok tuple with the formatted string on success, or an error tuple 
+  on failure.
+  """
+  @spec format_quoted(t(), Path.t(), Macro.t(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  def format_quoted(dot_formatter, file, quoted, opts \\ []) do
+    opts =
+      opts
+      |> Keyword.put_new(:file, file)
+      |> Keyword.put(:from, :quoted)
+
+    with {:ok, formatter} <- formatter_for_file(dot_formatter, file, opts) do
+      {:ok, formatter.(quoted)}
+    end
+  end
+
+  @doc """
+  Same as `format_quoted/4`, but raises a `Rewrite.DotFormatterError` exception
+  in case of failure.
+  """
+  @spec format_quoted(t(), Path.t(), Macro.t(), keyword()) :: String.t()
+  def format_quoted!(dot_formatter, file, quoted, opts \\ []) do
+    case format_quoted(dot_formatter, file, quoted, opts) do
+      {:ok, formatted} -> formatted
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Returns the formatter options for the given `dot_formatter`.
+  """
+  @spec formatter_opts(t()) :: keyword()
   def formatter_opts(dot_formatter) do
     dot_formatter
     |> Map.take(@formatter_opts)
@@ -488,10 +658,10 @@ defmodule Rewrite.DotFormatter do
   @doc """
   Returns a list of `{path, formatter}` tuples for the given `dot_formatter`.
 
-  The formatter is a two arrity function that takes a string as input and 
+  The formatter is a two arrity function that takes a string as input and
   options to format the string. For more information see `formatter_for_file/3`.
   """
-  @spec expand(t(), Rewrite.t() | nil, keyword()) :: [{Path.t(), formatter()}]
+  @spec expand(t(), Rewrite.t() | keyword() | nil, keyword()) :: [{Path.t(), formatter()}]
   def expand(dot_formatter, project \\ nil, opts \\ [])
 
   def expand(dot_formatter, opts, []) when is_list(opts) do
@@ -503,27 +673,11 @@ defmodule Rewrite.DotFormatter do
   end
 
   defp do_expand(%DotFormatter{} = dot_formatter, nil, opts) do
-    formatter_opts = formatter_opts(dot_formatter)
-    identity_formatters = Keyword.get(opts, :identity_formatters, false)
-    source_path = Keyword.get(opts, :source_path, false)
-
     list =
       dot_formatter
       |> files()
       |> filter_by_modified_after(opts)
-      |> Enum.reduce([], fn file, acc ->
-        formatter = formatter(dot_formatter, formatter_opts, file)
-
-        if !identity_formatters && formatter == (&Function.identity/1) do
-          acc
-        else
-          if source_path do
-            [{file, source_path(dot_formatter)} | acc]
-          else
-            [{file, formatter} | acc]
-          end
-        end
-      end)
+      |> do_expand_files(dot_formatter, opts)
 
     Enum.reduce(dot_formatter.subs, list, fn sub, acc ->
       do_expand(sub, nil, opts) ++ acc
@@ -531,35 +685,54 @@ defmodule Rewrite.DotFormatter do
   end
 
   defp do_expand(%DotFormatter{} = dot_formatter, project, opts) do
+    project
+    |> filter_by_modified_after(opts)
+    |> do_expand_sources(dot_formatter, opts)
+  end
+
+  defp do_expand_files(files, dot_formatter, opts) do
+    formatter_opts = formatter_opts(dot_formatter)
     identity_formatters = Keyword.get(opts, :identity_formatters, false)
     source_path = Keyword.get(opts, :source_path, false)
 
-    project
-    |> filter_by_modified_after(opts)
-    |> Enum.reduce([], fn source, acc ->
-      case dot_formatters_for_file(dot_formatter, source.path) do
-        [] ->
-          acc
+    Enum.reduce(files, [], fn file, acc ->
+      formatter = formatter(dot_formatter, formatter_opts, file)
 
-        dot_formatters ->
-          dot_formatters
-          |> Enum.map(fn dot_formatter ->
-            formatter_opts = formatter_opts(dot_formatter)
-            formatter = formatter(dot_formatter, formatter_opts, source.path)
-
-            if !identity_formatters && formatter == (&Function.identity/1) do
-              acc
-            else
-              if source_path do
-                {source.path, source_path(dot_formatter)}
-              else
-                {source.path, formatter}
-              end
-            end
-          end)
-          |> Enum.concat(acc)
+      if !identity_formatters && formatter == (&Function.identity/1) do
+        acc
+      else
+        formatter = if source_path, do: source_path(dot_formatter), else: formatter
+        [{file, formatter} | acc]
       end
     end)
+  end
+
+  defp do_expand_sources(sources, dot_formatter, opts) do
+    Enum.reduce(sources, [], fn source, acc ->
+      case dot_formatters_for_file(dot_formatter, source.path) do
+        [] -> acc
+        dot_formatters -> do_expand_sources(dot_formatters, source, opts, acc)
+      end
+    end)
+  end
+
+  defp do_expand_sources(dot_formatters, source, opts, acc) do
+    identity_formatters = Keyword.get(opts, :identity_formatters, false)
+    source_path = Keyword.get(opts, :source_path, false)
+
+    dot_formatters
+    |> Enum.flat_map(fn dot_formatter ->
+      formatter_opts = formatter_opts(dot_formatter)
+      formatter = formatter(dot_formatter, formatter_opts, source.path)
+
+      if !identity_formatters && formatter == (&Function.identity/1) do
+        []
+      else
+        formatter = if source_path, do: source_path(dot_formatter), else: formatter
+        [{source.path, formatter}]
+      end
+    end)
+    |> Enum.concat(acc)
   end
 
   defp filter_by_modified_after(input, nil), do: input
@@ -576,19 +749,16 @@ defmodule Rewrite.DotFormatter do
     Enum.filter(project, fn source -> source.timestamp > timestamp end)
   end
 
-  def conflicts(dot_formatter \\ nil, project \\ nil)
+  @doc """
+  Returns a list of conflicting files and their dot-formatter paths in the given
+  `dot_formatter`.
 
-  def conflicts(nil, nil) do
-    with {:ok, dot_formatter} <- eval() do
-      conflicts(dot_formatter, nil)
-    end
-  end
-
-  def conflicts(%Rewrite{} = project, nil) do
-    with {:ok, dot_formatter} <- eval(project) do
-      conflicts(dot_formatter, project)
-    end
-  end
+  A conflicting file is defined as a file in the given `dot_formatter` that has
+  more as one dot-formatter associated with it.
+  """
+  @spec conflicts(t(), Rewrite.t() | nil) :: [{Path.t(), [dot_formatter_path]}]
+        when dot_formatter_path: Path.t()
+  def conflicts(dot_formatter, project \\ nil)
 
   def conflicts(%DotFormatter{} = dot_formatter, nil) do
     dot_formatter
@@ -615,35 +785,32 @@ defmodule Rewrite.DotFormatter do
 
   defp source_path(%DotFormatter{path: path, source: source}), do: Path.join(path, source)
 
-  # TODO: 
-  # * make dot_formatter arg mandatory
-  # * add option input. possible values: :string, :quoted. default: :string
-  def formatter_for_file(dot_formatter \\ nil, file, opts \\ [])
+  @doc """
+  Returns a formatter function to be used for the given `file`.
 
-  def formatter_for_file(file, opts, []) when is_binary(file) and is_list(opts) do
-    formatter_for_file(nil, file, opts)
-  end
+  The returned function takes a string or an Elixir AST and returns the formatted
+  string. The option `:from` takes the value `:string` or `:quoted` to determine
+  which input type is used by the formatter, defaulting to `:string`.
 
-  def formatter_for_file(nil, file, opts) do
-    with {:ok, dot_formatter} <- eval() do
-      formatter_for_file(dot_formatter, file, opts)
-    end
-  end
-
-  def formatter_for_file(dot_formatter, file, opts) do
+  The function also accepts the same options as `Code.format_string!/2`, these
+  are used when the formatter is called.
+  """
+  @spec formatter_for_file(DotFormatter.t(), Path.t(), keyword()) ::
+          {:ok, (String.t() -> String.t()) | (Macro.t() -> String.t())}
+          | {:error, DotFormatterError.t()}
+  def formatter_for_file(dot_formatter, file, opts \\ []) do
     case dot_formatters_for_file(dot_formatter, file) do
       [dot_formatter] ->
         formatter_opts = Keyword.merge(formatter_opts(dot_formatter), opts)
         {:ok, formatter(dot_formatter, formatter_opts, file)}
 
-      _dot_formatters ->
-        # TODO: error handling
-        {:error, :todo}
+      dot_formatters ->
+        {:error, %DotFormatterError{reason: {:invalid_dot_formatter, dot_formatters}, path: file}}
     end
   end
 
   @doc """
-  Returns a `%DotFormatter{}` struct with the result of invoking `fun` on the 
+  Returns a `%DotFormatter{}` struct with the result of invoking `fun` on the
   given `dot_formatter` and any sub-formatters.
   """
   @spec map(DotFormatter.t(), (DotFormatter.t() -> DotFormatter.t())) :: DotFormatter.t()
@@ -655,6 +822,11 @@ defmodule Rewrite.DotFormatter do
     end)
   end
 
+  @doc """
+  Invokes `fun` for each `dot_formatter` and any sub-formatters with the
+  accumulator.
+  """
+  @spec reduce(t(), acc, (t(), acc -> acc)) :: acc when acc: any()
   def reduce(%DotFormatter{} = dot_formatter, acc \\ [], fun) do
     acc = fun.(dot_formatter, acc)
 
@@ -676,40 +848,26 @@ defmodule Rewrite.DotFormatter do
     Enum.reduce(dot_formatter.subs, acc, fn sub, acc ->
       dot_formatters_for_file(sub, file, acc)
     end)
-
-    # if match? do
-    #   dot_formatter
-    # else
-    #   Enum.find(dot_formatter.subs, fn sub -> dot_formatters_for_file(sub, file) end)
-    # end
   end
 
   defp formatter(dot_formatter, formatter_opts, file) do
     ext = Path.extname(file)
     plugins = plugins_for_extension(dot_formatter.plugins, formatter_opts, ext)
+    {from, formatter_opts} = Keyword.pop(formatter_opts, :from, :string)
 
     cond do
-      plugins != [] ->
-        plugin_formatter(plugins, [extension: ext, file: file] ++ formatter_opts)
+      not Enum.empty?(plugins) ->
+        plugin_formatter(from, plugins, [extension: ext, file: file] ++ formatter_opts)
 
       ext in [".ex", ".exs"] ->
-        elixir_formatter([file: file] ++ formatter_opts)
+        elixir_formatter(from, [file: file] ++ formatter_opts)
 
       true ->
         &Function.identity/1
     end
   end
 
-  defp plugins_for_extension(nil, _formatter_opts, _ext), do: []
-
-  defp plugins_for_extension(plugins, formatter_opts, ext) do
-    Enum.filter(plugins, fn plugin ->
-      Code.ensure_loaded?(plugin) and function_exported?(plugin, :features, 1) and
-        ext in List.wrap(plugin.features(formatter_opts)[:extensions])
-    end)
-  end
-
-  defp plugin_formatter(plugins, formatter_opts) do
+  defp plugin_formatter(:string, plugins, formatter_opts) do
     fn input ->
       Enum.reduce(plugins, input, fn plugin, input ->
         plugin.format(input, formatter_opts)
@@ -717,13 +875,51 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp elixir_formatter(formatter_opts) do
+  defp plugin_formatter(:quoted, [plugin | plugins], formatter_opts) do
+    fn input ->
+      formatter_opts =
+        Keyword.put(formatter_opts, :quoted_to_algebra, &plugin.quoted_to_algebra/2)
+
+      input = Sourceror.to_string(input, formatter_opts) <> "\n"
+
+      Enum.reduce(plugins, input, fn plugin, input ->
+        plugin.format(input, formatter_opts)
+      end)
+    end
+  end
+
+  defp elixir_formatter(:string, formatter_opts) do
     fn input ->
       case Code.format_string!(input, formatter_opts) do
         [] -> ""
         formatted -> IO.iodata_to_binary([formatted, ?\n])
       end
     end
+  end
+
+  defp elixir_formatter(:quoted, formatter_opts) do
+    fn input ->
+      formatter_opts = Keyword.put(formatter_opts, :quoted_to_algebra, &Code.quoted_to_algebra/2)
+      Sourceror.to_string(input, formatter_opts) <> "\n"
+    end
+  end
+
+  defp plugins_for_extension(nil, _formatter_opts, _ext), do: []
+
+  defp plugins_for_extension(plugins, formatter_opts, ext) do
+    Enum.filter(plugins, fn plugin ->
+      ext in List.wrap(plugin.features(formatter_opts)[:extensions])
+    end)
+  end
+
+  defp plugins_for_extensions(nil, _formatter_opts, _exts), do: []
+
+  defp plugins_for_extensions(plugins, formatter_opts, exts) do
+    Enum.filter(plugins, fn plugin ->
+      extensions = List.wrap(plugin.features(formatter_opts)[:extensions])
+
+      Enum.any?(exts, fn ext -> ext in extensions end)
+    end)
   end
 
   defp files(dot_formatter) do
@@ -733,9 +929,9 @@ defmodule Rewrite.DotFormatter do
     |> Enum.filter(&File.regular?/1)
   end
 
-  defp eval_dot_formatter(project \\ nil, path)
+  defp read_dot_formatter(project \\ nil, path)
 
-  defp eval_dot_formatter(nil, path) do
+  defp read_dot_formatter(nil, path) do
     if File.regular?(path) do
       {term, _binding} = Code.eval_file(path)
       timestamp = File.stat!(path, time: :posix).mtime
@@ -745,14 +941,14 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp eval_dot_formatter(project, path) do
+  defp read_dot_formatter(project, path) do
     case Rewrite.source(project, path) do
       {:ok, source} ->
         {term, _binding} = source |> Source.get(:content) |> Code.eval_string()
         {:ok, term, source.timestamp}
 
       {:error, %Rewrite.Error{reason: :nosource}} ->
-        eval_dot_formatter(nil, path)
+        read_dot_formatter(nil, path)
 
       {:error, reason} ->
         {:error, reason}
@@ -776,7 +972,7 @@ defmodule Rewrite.DotFormatter do
   defp locals_without_parens(deps_paths) do
     result =
       Enum.reduce_while(deps_paths, [], fn {dep, path}, acc ->
-        case eval_dot_formatter(path) do
+        case read_dot_formatter(path) do
           {:ok, term, _timestamp} ->
             locals_without_parens = term[:export][:locals_without_parens] || []
             {:cont, acc ++ locals_without_parens}
@@ -806,7 +1002,7 @@ defmodule Rewrite.DotFormatter do
     result =
       Enum.reduce_while(subdirectories, [], fn subdirectory, acc ->
         with {:ok, dirs} <- dirs(dot_formatter.path, subdirectory),
-             {:ok, subs} <- do_eval_subs(project, opts, dirs) do
+             {:ok, subs} <- do_eval_subs(project, opts, dirs, subdirectory) do
           {:cont, subs ++ acc}
         else
           error -> {:halt, error}
@@ -819,11 +1015,11 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp do_eval_subs(project, opts, dirs) do
+  defp do_eval_subs(project, opts, dirs, subdirectory) do
     result =
       Enum.reduce_while(dirs, [], fn dir, acc ->
         if dir |> Path.join(@defaul_dot_formatter) |> File.regular?() do
-          case do_eval(project, opts, dir) do
+          case read(project, opts, dir) do
             {:ok, dot_formatter} -> {:cont, [dot_formatter | acc]}
             error -> {:halt, error}
           end
@@ -834,7 +1030,7 @@ defmodule Rewrite.DotFormatter do
 
     case result do
       {:error, _reason} = error -> error
-      [] -> {:error, :empty}
+      [] -> {:error, %DotFormatterError{reason: {:no_subs, subdirectory}}}
       subs when is_list(subs) -> {:ok, subs}
     end
   end
@@ -926,8 +1122,7 @@ defmodule Rewrite.DotFormatter do
         {:ok, glob |> GlobEx.ls() |> Enum.filter(&File.dir?/1)}
 
       {:error, reason} ->
-        # TODO: add error handling
-        IO.inspect(reason, label: :todo)
+        {:error, %DotFormatterError{reason: reason}}
     end
   end
 

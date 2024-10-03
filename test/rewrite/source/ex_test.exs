@@ -1,8 +1,7 @@
 defmodule Rewrite.Source.ExTest do
-  use ExUnit.Case
+  use RewriteCase
 
-  import ExUnit.CaptureIO
-
+  alias Rewrite.DotFormatter
   alias Rewrite.Source
   alias Rewrite.Source.Ex
 
@@ -12,6 +11,25 @@ defmodule Rewrite.Source.ExTest do
     test "creates new source" do
       assert %Source{filetype: ex} = Source.Ex.read!("test/fixtures/source/simple.ex")
       assert %Ex{quoted: {:defmodule, _meta, _args}} = ex
+    end
+  end
+
+  describe "from_string3" do
+    test "creates an ex source from string" do
+      assert %Source{} = source = Source.Ex.from_string(":a")
+      assert is_struct(source.filetype, Ex)
+      assert source.path == nil
+      assert source.owner == Rewrite
+    end
+
+    test "creates an ex source from string with path" do
+      assert %Source{} = source = Source.Ex.from_string(":a", "test.ex")
+      assert source.path == "test.ex"
+    end
+
+    test "creates an ex source from string with path and opts" do
+      assert %Source{} = source = Source.Ex.from_string(":a", "test.ex", owner: Meins)
+      assert source.owner == Meins
     end
   end
 
@@ -63,23 +81,41 @@ defmodule Rewrite.Source.ExTest do
       assert Source.get(source, :quoted) == Sourceror.parse_string!(":x")
     end
 
-    test "updates fromatter" do
-      source = Source.Ex.from_string(":a", "a.exs")
-      formatter = source.filetype.formatter
-
-      source = Source.update(source, :content, ":x")
-      assert source.filetype.formatter == formatter
-
-      source = Source.update(source, :path, "x.exs")
-      refute source.filetype.formatter == formatter
-    end
-
     test "raises an error" do
       source = Source.Ex.from_string(":a")
       message = ~r/unexpected.reserved.word:.end/m
 
       assert_raise SyntaxError, message, fn ->
         Source.update(source, :content, ":ok end")
+      end
+    end
+
+    @tag :tmp_dir
+    test "updates content with the rewrite dot formatter", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["a.ex"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => """
+          foo bar baz
+          """
+        })
+
+        rewrite = Rewrite.new!("**/*", dot_formatter: DotFormatter.read!())
+
+        assert read!(rewrite, "a.ex") == "foo bar baz\n"
+
+        source = Rewrite.source!(rewrite, "a.ex")
+        source = Source.update(source, :content, "foo bar baz")
+        assert Source.get(source, :content) == "foo bar baz"
+
+        quoted = Sourceror.parse_string!("foo baz bar")
+        source = Source.update(source, :quoted, quoted)
+        assert Source.get(source, :content) == "foo baz(bar)\n"
       end
     end
   end
@@ -118,7 +154,7 @@ defmodule Rewrite.Source.ExTest do
     end
   end
 
-  describe "module/2" do
+  describe "modules/2" do
     test "retruns a list with one module" do
       source = Source.Ex.read!("test/fixtures/source/simple.ex")
 
@@ -147,163 +183,11 @@ defmodule Rewrite.Source.ExTest do
     end
   end
 
-  describe "format/1" do
-    test "formats with plugin FakeFormatter" do
-      plugins = [FakeFormatter]
-
-      source = ":a" |> Source.Ex.from_string() |> Source.Ex.put_formatter_opts(plugins: plugins)
-
-      {_source, io} =
-        with_io(fn ->
-          Source.Ex.format(source)
-        end)
-
-      assert io == "FakeFormatter.format/2\n"
-    end
-
-    test "formats with plugin FreedomFormatter" do
-      # The FreedomFormatter is also a fake and returns always the same code.
-      plugins = [FreedomFormatter]
-
-      source =
-        """
-        [
-             1,
-        ]
-        """
-        |> Source.Ex.from_string()
-        |> Source.Ex.put_formatter_opts(plugins: plugins)
-
-      {code, io} =
-        with_io(fn ->
-          Source.Ex.format(source)
-        end)
-
-      assert io == "FreedomFormatter.Formatter.to_algebra/2\n"
-
-      assert code == """
-             [
-               1,
-             ]
-             """
-    end
-
-    test "formats with plugin FakeFormatter and excludes FreedomFormatter" do
-      plugins = [FreedomFormatter, FakeFormatter]
-      exclude = [FreedomFormatter]
-
-      source =
-        ":a"
-        |> Source.Ex.from_string("a.ex")
-        |> Source.Ex.put_formatter_opts(plugins: plugins)
-        |> Source.Ex.merge_formatter_opts(exclude_plugins: exclude)
-
-      {_code, io} =
-        with_io(fn ->
-          Source.Ex.format(source)
-        end)
-
-      assert io == "FakeFormatter.format/2\n"
-    end
-
-    test "formats with plugins FreedomFormatter and FakeFormatter" do
-      {_source, io} =
-        with_io(fn ->
-          ":a"
-          |> Source.Ex.from_string()
-          |> Source.Ex.put_formatter_opts(plugins: [FreedomFormatter, FakeFormatter])
-          |> Source.Ex.format()
-        end)
-
-      assert io == "FreedomFormatter.Formatter.to_algebra/2\nFakeFormatter.format/2\n"
-    end
-
-    test "formats with plugin FakeFormatter and FreedomFormatter" do
-      {_source, io} =
-        with_io(fn ->
-          ":a"
-          |> Source.Ex.from_string()
-          |> Source.Ex.put_formatter_opts(plugins: [FakeFormatter, FreedomFormatter])
-          |> Source.Ex.format()
-        end)
-
-      assert io == "FakeFormatter.format/2\nFreedomFormatter.format/2\n"
-    end
-  end
-
   describe "format/2" do
-    test "formats with plugin FakeFormatter" do
-      plugins = [FakeFormatter]
+    test "formats with plugin AltExWrapperPlugin" do
+      source = Source.Ex.from_string("if   x == 0 , do: nil , else: x")
 
-      source = Source.Ex.from_string(":a")
-
-      {_source, io} =
-        with_io(fn ->
-          Source.Ex.format(source, plugins: plugins)
-        end)
-
-      assert io == "FakeFormatter.format/2\n"
-    end
-
-    test "formats with plugin FreedomFormatter" do
-      # The FreedomFormatter is also a fake and returns always the same code.
-      plugins = [FreedomFormatter]
-
-      source =
-        Source.Ex.from_string("""
-        [
-             1,
-        ]
-        """)
-
-      {code, io} =
-        with_io(fn ->
-          Source.Ex.format(source, plugins: plugins)
-        end)
-
-      assert io == "FreedomFormatter.Formatter.to_algebra/2\n"
-
-      assert code == """
-             [
-               1,
-             ]
-             """
-    end
-
-    test "formats with plugin FakeFormatter and excludes FreedomFormatter" do
-      plugins = [FreedomFormatter, FakeFormatter]
-      exclude = [FreedomFormatter]
-
-      source = Source.Ex.from_string(":a")
-
-      {_code, io} =
-        with_io(fn ->
-          Source.Ex.format(source, plugins: plugins, exclude_plugins: exclude)
-        end)
-
-      assert io == "FakeFormatter.format/2\n"
-    end
-
-    test "formats with plugins FreedomFormatter and FakeFormatter" do
-      {_source, io} =
-        with_io(fn ->
-          ":a"
-          |> Source.Ex.from_string()
-          |> Source.Ex.format(plugins: [FreedomFormatter, FakeFormatter])
-        end)
-
-      assert io == "FreedomFormatter.Formatter.to_algebra/2\nFakeFormatter.format/2\n"
-    end
-
-    test "formats with plugin FakeFormatter and FreedomFormatter" do
-      {_source, io} =
-        with_io(fn ->
-          ":a"
-          |> Source.Ex.from_string()
-          |> Source.Ex.format(plugins: [FakeFormatter, FreedomFormatter])
-        end)
-
-      assert io == "FakeFormatter.format/2\nFreedomFormatter.format/2\n"
+      assert Source.Ex.format(source) == "if x == 0, do: nil, else: x\n"
     end
   end
 end

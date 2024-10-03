@@ -1,8 +1,9 @@
 defmodule RewriteTest do
-  use ExUnit.Case, async: false
+  use RewriteCase, async: false
 
   alias Rewrite.Source
 
+  alias Rewrite.DotFormatter
   alias Rewrite.Error
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
@@ -92,7 +93,7 @@ defmodule RewriteTest do
 
     test "creates a project from one file without extensions" do
       path = "test/fixtures/source/simple.ex"
-      assert project = Rewrite.new!(path, [])
+      assert project = Rewrite.new!(path, filetypes: [])
       assert Enum.count(project.sources) == 1
       assert %Source{filetype: nil} = Rewrite.source!(project, path)
     end
@@ -102,10 +103,12 @@ defmodule RewriteTest do
       txt = "test/fixtures/source/hello.txt"
 
       assert project =
-               Rewrite.new!([ex, txt], [
-                 {Source, owner: Test},
-                 {Source.Ex, formatter_opts: [exclude_plugins: [Test]]}
-               ])
+               Rewrite.new!([ex, txt],
+                 filetypes: [
+                   {Source, owner: Test},
+                   {Source.Ex, formatter_opts: [exclude_plugins: [Test]]}
+                 ]
+               )
 
       assert Enum.count(project.sources) == 2
       assert %Source{filetype: nil, owner: Test} = Rewrite.source!(project, txt)
@@ -161,7 +164,7 @@ defmodule RewriteTest do
       inputs = ["test/fixtures/error.ex"]
 
       assert_raise SyntaxError, fn ->
-        Rewrite.new!(inputs) 
+        Rewrite.new!(inputs)
       end
     end
   end
@@ -479,7 +482,7 @@ defmodule RewriteTest do
       mapped = Enum.map(project, fn source -> source end)
 
       assert is_list(mapped)
-      assert Rewrite.from_sources(mapped) == {:ok, project}
+      assert Enum.sort(mapped) == project.sources |> Map.values() |> Enum.sort()
     end
 
     test "maps a project" do
@@ -928,6 +931,103 @@ defmodule RewriteTest do
 
       assert Enum.member?(project, b) == false
       assert Enum.member?(project, :a) == false
+    end
+  end
+
+  describe "dot_formatter/1/2" do
+    test "returns an default dot formatter" do
+      project = Rewrite.new()
+      assert Rewrite.dot_formatter(project) == DotFormatter.new()
+    end
+
+    test "returns the set dot formatter" do
+      {:ok, dot_formatter} = DotFormatter.read()
+      project = Rewrite.new()
+
+      assert dot_formatter != DotFormatter.new()
+      assert Rewrite.dot_formatter(project, dot_formatter) == project
+      assert Rewrite.dot_formatter(project) == dot_formatter
+    end
+  end
+
+  describe "create_source/4" do
+    test "creates a source" do
+      rewrite = Rewrite.new()
+      assert {:ok, rewrite} = Rewrite.create_source(rewrite, "test.ex", "test")
+      assert {:ok, source} = Rewrite.source(rewrite, "test.ex")
+      assert is_struct(source.filetype, Source.Ex)
+      assert rewrite.id == source.rewrite_id
+    end
+
+    test "return an error tuple when the source already exists" do
+      rewrite = Rewrite.new()
+      assert {:ok, rewrite} = Rewrite.create_source(rewrite, "test.ex", "test")
+      assert {:error, _error} = Rewrite.create_source(rewrite, "test.ex", "test")
+    end
+
+    test "creates a source with opts" do
+      rewrite = Rewrite.new()
+
+      assert {:ok, rewrite} =
+               Rewrite.create_source(rewrite, "test.ex", "test", owner: MyApp, sync_quoted: false)
+
+      assert {:ok, source} = Rewrite.source(rewrite, "test.ex")
+      assert source.owner == MyApp
+      assert source.filetype.opts == [sync_quoted: false]
+    end
+  end
+
+  describe "create_source!/4" do
+    test "raises an error tuple when the source already exists" do
+      rewrite = Rewrite.new()
+      assert rewrite = Rewrite.create_source!(rewrite, "test.ex", "test")
+
+      message = "overwrites \"test.ex\""
+
+      assert_raise Error, message, fn ->
+        Rewrite.create_source!(rewrite, "test.ex", "test")
+      end
+    end
+  end
+
+  describe "format/2" do
+    @describetag :tmp_dir
+    test "formats the rewwrite project", context do
+      in_tmp context do
+        write!(%{
+          ".formatter.exs" => """
+          [
+            inputs: ["**/*{.ex,.exs}"],
+            locals_without_parens: [foo: 1]
+          ]
+          """,
+          "a.ex" => """
+            foo   bar   baz
+          """
+        })
+
+        project = Rewrite.new!("**/*")
+
+        assert {:ok, formatted} = Rewrite.format(project)
+        assert read!(formatted, "a.ex") == "foo(bar(baz))\n"
+
+        {:ok, dot_formatter} = DotFormatter.read()
+        assert Rewrite.dot_formatter(project, dot_formatter)
+        assert {:ok, formatted} = Rewrite.format(project)
+        assert read!(formatted, "a.ex") == "foo bar(baz)\n"
+
+        project = Rewrite.new!("**/*", dot_formatter: dot_formatter)
+
+        assert {:ok, formatted} = Rewrite.format(project)
+        assert read!(formatted, "a.ex") == "foo bar(baz)\n"
+      end
+    end
+  end
+
+  describe "KeyValueStore" do
+    test "returns the default for unset value" do
+      rewrite = Rewrite.new()
+      assert Rewrite.KeyValueStore.get(rewrite, "foo", "bar") == "bar"
     end
   end
 end

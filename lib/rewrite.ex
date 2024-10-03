@@ -6,11 +6,13 @@ defmodule Rewrite do
 
   alias Rewrite.Source
 
+  alias Rewrite.DotFormatter
   alias Rewrite.Error
+  alias Rewrite.KeyValueStore
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
 
-  defstruct sources: %{}, extensions: %{}
+  defstruct [:id, sources: %{}, extensions: %{}]
 
   @type t :: %Rewrite{sources: %{Path.t() => Source.t()}}
   @type input :: Path.t() | wildcard() | GlobEx.t()
@@ -20,23 +22,24 @@ defmodule Rewrite do
   @doc """
   Creates an empty project.
 
-  The optional argument is a list of modules implementing the behavior
-  `Rewrite.Filetye`. This list is used to add the `filetype` to the `sources` of
-  the corresponding files. The list can contain modules representing a file
-  type or a tuple of `{module(), keyword()}`. Rewrite uses the keyword list from
-  the tuple as the options argument when a file is reading.
+  ## Options
+
+    * `:filetypes` - a list of modules implementing the behavior 
+      `Rewrite.Filetye`. This list is used to add the `filetype` to the 
+      `sources` of the corresponding files. The list can contain modules 
+      representing a file type or a tuple of `{module(), keyword()}`. Rewrite 
+      uses the keyword list from the tuple as the options argument when a file
+      is reading.
+
+      Defaults to `[Rewrite.Source, Rewrite.Source.Ex]`.
+
+    * `:dot_formatter` - a `%DotFormatter{}` that is used to format sources.
+      To get and update a dot formatter see `dot_formatter/2` and to create one
+      see `Rewrite.DotFormatter`.
 
   ## Examples
 
       iex> project = Rewrite.new()
-      %Rewrite{
-        sources: %{},
-        extensions: %{
-          "default" => Source,
-          ".ex" => Source.Ex,
-          ".exs" => Source.Ex,
-        }
-      }
       iex> path = "test/fixtures/source/hello.txt"
       iex> project = Rewrite.read!(project, path)
       iex> project |> Rewrite.source!(path) |> Source.get(:content)
@@ -44,34 +47,27 @@ defmodule Rewrite do
       iex> project |> Rewrite.source!(path) |> Source.owner()
       Rewrite
 
-      iex> project = Rewrite.new([{Rewrite.Source, owner: MyApp}])
-      %Rewrite{
-        sources: %{},
-        extensions: %{
-          "default" => {Source, owner: MyApp}
-        }
-      }
+      iex> project = Rewrite.new(filetypes: [{Rewrite.Source, owner: MyApp}])
       iex> path = "test/fixtures/source/hello.txt"
       iex> project = Rewrite.read!(project, path)
       iex> project |> Rewrite.source!(path) |> Source.owner()
       MyApp
   """
-  @spec new([module() | {module(), keyword()}]) :: t()
-  def new(filetypes \\ [Source, Source.Ex]) when is_list(filetypes) do
-    %Rewrite{extensions: extensions(filetypes)}
+  @spec new(keyword()) :: t()
+  def new(opts \\ []) do
+    extensions = Keyword.get(opts, :filetypes, [Source, Source.Ex])
+    rewrite = %Rewrite{id: System.unique_integer([:positive]), extensions: extensions(extensions)}
+    dot_formatter(rewrite, Keyword.get(opts, :dot_formatter))
   end
 
   @doc """
   Creates a `%Rewrite{}` from the given `inputs`.
 
-  The optional second argument is a list of modules implementing the behavior
-  `Rewrite.Filetye`. For more info, see `new/1`.
+  Accepts the same options as `new/1`.
   """
-  @spec new!(input() | [input()], [module() | {module(), keyword()}]) :: t()
-  def new!(inputs, filetypes \\ [Source, Source.Ex]) do
-    filetypes
-    |> new()
-    |> read!(inputs)
+  @spec new!(input() | [input()], opts) :: t()
+  def new!(inputs, opts \\ []) do
+    opts |> new() |> read!(inputs)
   end
 
   @doc """
@@ -80,8 +76,9 @@ defmodule Rewrite do
 
   ## Options
 
-  + `:force`, default: `false` - forces the reading of sources. With
-    `force: true` updates and issues for an already existing source are deleted.
+    * `:force`, default: `false` - forces the reading of sources. With
+      `force: true` updates and issues for an already existing source are 
+      deleted.
   """
   @spec read!(t(), input() | [input()], opts()) :: t()
   def read!(%Rewrite{} = rewrite, inputs, opts \\ []) do
@@ -98,7 +95,7 @@ defmodule Rewrite do
           sources
 
         {:ok, {path, source}}, sources ->
-          Map.put(sources, path, source)
+          Map.put(sources, path, %{source | rewrite_id: rewrite.id})
 
         {:exit, {error, _stacktrace}}, _sources when is_exception(error) ->
           raise error
@@ -117,6 +114,29 @@ defmodule Rewrite do
         source = read_source!(path, extensions)
         {path, source}
       end
+    end
+  end
+
+  defp read_source!(path, extensions) when not is_nil(path) do
+    {source, opts} = extension_for_file(extensions, path)
+
+    source.read!(path, opts)
+  end
+
+  @doc """
+  Returns the extension of the given `file`.
+  """
+  @spec extension_for_file(t() | map(), Path.t()) :: {module(), opts()}
+  def extension_for_file(%Rewrite{extensions: extensions}, path) do
+    extension_for_file(extensions, path)
+  end
+
+  def extension_for_file(extensions, path) do
+    ext = Path.extname(path)
+
+    case Map.get(extensions, ext, Map.fetch!(extensions, "default")) do
+      {module, opts} -> {module, opts}
+      module -> {module, []}
     end
   end
 
@@ -141,8 +161,12 @@ defmodule Rewrite do
 
   def put(%Rewrite{sources: sources} = rewrite, %Source{path: path} = source) do
     case Map.has_key?(sources, path) do
-      true -> {:error, Error.exception(reason: :overwrites, path: path)}
-      false -> {:ok, %{rewrite | sources: Map.put(sources, path, source)}}
+      true ->
+        {:error, Error.exception(reason: :overwrites, path: path)}
+
+      false ->
+        source = %{source | rewrite_id: rewrite.id}
+        {:ok, %{rewrite | sources: Map.put(sources, path, source)}}
     end
   end
 
@@ -636,6 +660,89 @@ defmodule Rewrite do
     if Enum.empty?(errors), do: {:ok, rewrite}, else: {:error, errors, rewrite}
   end
 
+  @doc """
+  Formats the given `rewrite` project with the given `dot_formatter`.
+
+  If no `dot_formatter` is given, the `%DotFormatter{}` from 
+  `dot_formatter(rewrite)` is used.
+
+  The options are the same as for `DotFormatter.read/2`.
+  """
+  @spec format(t(), DotFormatter.t() | keyword() | nil, keyword()) :: {:ok, t()}
+  def format(rewrite, dot_formatter \\ nil, opts \\ [])
+
+  def format(%Rewrite{} = rewrite, nil, [] = opts) do
+    dot_formatter = dot_formatter(rewrite)
+    format(rewrite, dot_formatter, opts)
+  end
+
+  def format(%Rewrite{} = rewrite, [_ | _] = opts, _opts) do
+    dot_formatter = dot_formatter(rewrite)
+    format(rewrite, dot_formatter, opts)
+  end
+
+  def format(%Rewrite{} = rewrite, dot_formatter, opts) do
+    DotFormatter.format_rewrite(dot_formatter, rewrite, opts)
+  end
+
+  @doc """
+  Formats a source in a `rewrite` project with the given `dot_formatter`.
+
+  The options are the same as for `Code.format_string!/2`.
+  """
+  @spec format_source(t(), DotFormatter.t(), String.t(), keyword()) :: {:ok, t()}
+  def format_source(%Rewrite{} = rewrite, %DotFormatter{} = dot_formatter, file, opts \\ []) do
+    DotFormatter.format_source(dot_formatter, rewrite, file, opts)
+  end
+
+  @doc """
+  Returns the `DotFormatter` for the given `rewrite` project.
+
+  When no formatter is set, the default formatter from 
+  `Rewrite.DotFormatter.new/0` is returned. A dot formatter can be set with
+  `dot_formatter/2`.
+  """
+  @spec dot_formatter(t() | id) :: DotFormatter.t() when id: integer()
+  def dot_formatter(rewrite) when is_struct(rewrite, Rewrite) or is_integer(rewrite) do
+    KeyValueStore.get(rewrite, :dot_formatter, DotFormatter.new())
+  end
+
+  @doc """
+  Sets a `dot_formatter` for the given `rewrite` project.
+  """
+  @spec dot_formatter(t(), DotFormatter.t()) :: t()
+  def dot_formatter(%Rewrite{} = rewrite, dot_formatter)
+      when is_struct(dot_formatter, DotFormatter) or is_nil(dot_formatter) do
+    KeyValueStore.put(rewrite, :dot_formatter, dot_formatter)
+  end
+
+  @doc """
+  """
+  @spec create_source(t(), Path.t(), String.t(), opts()) :: {:ok, t()} | {:error, Error.t()}
+  def create_source(%Rewrite{sources: sources} = rewrite, path, content, opts \\ []) do
+    case Map.has_key?(sources, path) do
+      true ->
+        {:error, Error.exception(reason: :overwrites, path: path)}
+
+      false ->
+        {source, source_opts} = extension_for_file(rewrite, path)
+        opts = Keyword.merge(source_opts, opts)
+        source = source.from_string(content, path, opts)
+        put(rewrite, source)
+    end
+  end
+
+  @doc """
+  Same as `create_source/4`, but raises a `Rewrite.Error` exception in case of failure.
+  """
+  @spec create_source!(t(), Path.t(), String.t(), opts()) :: t()
+  def create_source!(%Rewrite{} = rewrite, path, content, opts \\ []) do
+    case create_source(rewrite, path, content, opts) do
+      {:ok, rewrite} -> rewrite
+      {:error, error} -> raise error
+    end
+  end
+
   defp extensions(modules) do
     modules
     |> Enum.flat_map(fn
@@ -653,18 +760,6 @@ defmodule Rewrite do
     end)
     |> Map.new()
     |> Map.put_new("default", Source)
-  end
-
-  defp read_source!(path, extensions) when not is_nil(path) do
-    ext = Path.extname(path)
-
-    {source, opts} =
-      case Map.get(extensions, ext, Map.fetch!(extensions, "default")) do
-        {module, opts} -> {module, opts}
-        module -> {module, []}
-      end
-
-    source.read!(path, opts)
   end
 
   defp expand(inputs) do

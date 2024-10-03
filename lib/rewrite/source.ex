@@ -27,6 +27,7 @@ defmodule Rewrite.Source do
     :owner,
     :filetype,
     :timestamp,
+    :rewrite_id,
     history: [],
     issues: [],
     private: %{}
@@ -155,11 +156,26 @@ defmodule Rewrite.Source do
   @doc """
   Creates a new `%Source{}` from the given `string`.
 
+  ## Options
+
+    * `:owner` - an association to the module that owns the `source`. 
+
   ## Examples
 
       iex> source = Source.from_string("hello")
       iex> source.content
       "hello"
+      iex> source.path
+      nil
+      iex> source.owner
+      Rewrite
+
+      iex> source = Source.from_string("hello", "hello.md", owner: MyApp)
+      iex> source.path
+      "hello.md"
+      iex> source.owner
+      MyApp
+
   """
   @spec from_string(String.t(), Path.t() | nil, opts()) :: t()
   def from_string(content, path \\ nil, opts \\ []) do
