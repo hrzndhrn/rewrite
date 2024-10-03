@@ -133,8 +133,9 @@ defmodule Rewrite do
 
   def extension_for_file(extensions, path) do
     ext = Path.extname(path)
+    default = Map.fetch!(extensions, "default")
 
-    case Map.get(extensions, ext, Map.fetch!(extensions, "default")) do
+    case Map.get(extensions, ext, default) do
       {module, opts} -> {module, opts}
       module -> {module, []}
     end
