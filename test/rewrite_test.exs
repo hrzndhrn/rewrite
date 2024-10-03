@@ -992,7 +992,7 @@ defmodule RewriteTest do
 
   describe "format/2" do
     @describetag :tmp_dir
-    test "formats the rewwrite project", context do
+    test "formats the rewrite project", context do
       in_tmp context do
         write!(%{
           ".formatter.exs" => """

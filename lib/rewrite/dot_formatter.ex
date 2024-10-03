@@ -38,7 +38,7 @@ defmodule Rewrite.DotFormatter do
   @root "."
   @defaul_dot_formatter ".formatter.exs"
 
-  @elixit_extensions [".ex", ".exs"]
+  @elixir_extensions [".ex", ".exs"]
 
   @formatter_opts [
     :force_do_end_blocks,
@@ -82,7 +82,7 @@ defmodule Rewrite.DotFormatter do
 
   @doc """
   Reads the `.formatter.exs` file in the current directory or the given
-  `%Rwrite{}` project.
+  `%Rewrite{}` project.
 
   If a `%Rewrite{}` project is given to the function, the formatter is searched 
   in the project and the latest version from the source is used. As a fallback, 
@@ -204,7 +204,7 @@ defmodule Rewrite.DotFormatter do
   defp check_ex_plugins(%{plugins: plugins} = dot_formatter) do
     formatter_opts = formatter_opts(dot_formatter)
 
-    case plugins_for_extensions(plugins, formatter_opts, @elixit_extensions) do
+    case plugins_for_extensions(plugins, formatter_opts, @elixir_extensions) do
       [plugin | _] ->
         if function_exported?(plugin, :quoted_to_algebra, 2) do
           {:ok, dot_formatter}
@@ -651,14 +651,14 @@ defmodule Rewrite.DotFormatter do
   def formatter_opts(dot_formatter) do
     dot_formatter
     |> Map.take(@formatter_opts)
-    |> Enum.filter(fn {_key, vlaue} -> not is_nil(vlaue) end)
+    |> Enum.filter(fn {_key, value} -> not is_nil(value) end)
     |> Enum.concat(dot_formatter.plugin_opts)
   end
 
   @doc """
   Returns a list of `{path, formatter}` tuples for the given `dot_formatter`.
 
-  The formatter is a two arrity function that takes a string as input and
+  The formatter is a two arity function that takes a string as input and
   options to format the string. For more information see `formatter_for_file/3`.
   """
   @spec expand(t(), Rewrite.t() | keyword() | nil, keyword()) :: [{Path.t(), formatter()}]
