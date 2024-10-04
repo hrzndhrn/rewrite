@@ -950,10 +950,10 @@ defmodule RewriteTest do
     end
   end
 
-  describe "create_source/4" do
+  describe "new_source/4" do
     test "creates a source" do
       rewrite = Rewrite.new()
-      assert {:ok, rewrite} = Rewrite.create_source(rewrite, "test.ex", "test")
+      assert {:ok, rewrite} = Rewrite.new_source(rewrite, "test.ex", "test")
       assert {:ok, source} = Rewrite.source(rewrite, "test.ex")
       assert is_struct(source.filetype, Source.Ex)
       assert rewrite.id == source.rewrite_id
@@ -961,15 +961,15 @@ defmodule RewriteTest do
 
     test "return an error tuple when the source already exists" do
       rewrite = Rewrite.new()
-      assert {:ok, rewrite} = Rewrite.create_source(rewrite, "test.ex", "test")
-      assert {:error, _error} = Rewrite.create_source(rewrite, "test.ex", "test")
+      assert {:ok, rewrite} = Rewrite.new_source(rewrite, "test.ex", "test")
+      assert {:error, _error} = Rewrite.new_source(rewrite, "test.ex", "test")
     end
 
     test "creates a source with opts" do
       rewrite = Rewrite.new()
 
       assert {:ok, rewrite} =
-               Rewrite.create_source(rewrite, "test.ex", "test", owner: MyApp, sync_quoted: false)
+               Rewrite.new_source(rewrite, "test.ex", "test", owner: MyApp, sync_quoted: false)
 
       assert {:ok, source} = Rewrite.source(rewrite, "test.ex")
       assert source.owner == MyApp
@@ -977,15 +977,15 @@ defmodule RewriteTest do
     end
   end
 
-  describe "create_source!/4" do
+  describe "new_source!/4" do
     test "raises an error tuple when the source already exists" do
       rewrite = Rewrite.new()
-      assert rewrite = Rewrite.create_source!(rewrite, "test.ex", "test")
+      assert rewrite = Rewrite.new_source!(rewrite, "test.ex", "test")
 
       message = "overwrites \"test.ex\""
 
       assert_raise Error, message, fn ->
-        Rewrite.create_source!(rewrite, "test.ex", "test")
+        Rewrite.new_source!(rewrite, "test.ex", "test")
       end
     end
   end

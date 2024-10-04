@@ -718,9 +718,10 @@ defmodule Rewrite do
   end
 
   @doc """
+  Creates a new `%Source{}` and puts the source to the `%Rewrite{}` project.
   """
-  @spec create_source(t(), Path.t(), String.t(), opts()) :: {:ok, t()} | {:error, Error.t()}
-  def create_source(%Rewrite{sources: sources} = rewrite, path, content, opts \\ []) do
+  @spec new_source(t(), Path.t(), String.t(), opts()) :: {:ok, t()} | {:error, Error.t()}
+  def new_source(%Rewrite{sources: sources} = rewrite, path, content, opts \\ []) do
     case Map.has_key?(sources, path) do
       true ->
         {:error, Error.exception(reason: :overwrites, path: path)}
@@ -734,11 +735,11 @@ defmodule Rewrite do
   end
 
   @doc """
-  Same as `create_source/4`, but raises a `Rewrite.Error` exception in case of failure.
+  Same as `new_source/4`, but raises a `Rewrite.Error` exception in case of failure.
   """
-  @spec create_source!(t(), Path.t(), String.t(), opts()) :: t()
-  def create_source!(%Rewrite{} = rewrite, path, content, opts \\ []) do
-    case create_source(rewrite, path, content, opts) do
+  @spec new_source!(t(), Path.t(), String.t(), opts()) :: t()
+  def new_source!(%Rewrite{} = rewrite, path, content, opts \\ []) do
+    case new_source(rewrite, path, content, opts) do
       {:ok, rewrite} -> rewrite
       {:error, error} -> raise error
     end
