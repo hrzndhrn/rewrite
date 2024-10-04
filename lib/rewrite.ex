@@ -126,13 +126,13 @@ defmodule Rewrite do
   @doc """
   Returns the extension of the given `file`.
   """
-  @spec extension_for_file(t() | map(), Path.t()) :: {module(), opts()}
+  @spec extension_for_file(t() | map(), Path.t() | nil) :: {module(), opts()}
   def extension_for_file(%Rewrite{extensions: extensions}, path) do
     extension_for_file(extensions, path)
   end
 
   def extension_for_file(extensions, path) do
-    ext = Path.extname(path)
+    ext = if path, do: Path.extname(path)
     default = Map.fetch!(extensions, "default")
 
     case Map.get(extensions, ext, default) do
@@ -677,7 +677,7 @@ defmodule Rewrite do
     format(rewrite, dot_formatter, opts)
   end
 
-  def format(%Rewrite{} = rewrite, [_ | _] = opts, _opts) do
+  def format(%Rewrite{} = rewrite, opts, _opts) when is_list(opts) do
     dot_formatter = dot_formatter(rewrite)
     format(rewrite, dot_formatter, opts)
   end
@@ -719,17 +719,23 @@ defmodule Rewrite do
 
   @doc """
   Creates a new `%Source{}` and puts the source to the `%Rewrite{}` project.
+
+  The `:filetypes` option of the project is used to create the source. If 
+  options have been specified for the file type, the given options will be 
+  merged into those options.
+
+  Use `create_source/4` if the source is not to be inserted directly into the 
+  project.
   """
   @spec new_source(t(), Path.t(), String.t(), opts()) :: {:ok, t()} | {:error, Error.t()}
-  def new_source(%Rewrite{sources: sources} = rewrite, path, content, opts \\ []) do
+  def new_source(%Rewrite{sources: sources} = rewrite, path, content, opts \\ [])
+      when is_binary(path) do
     case Map.has_key?(sources, path) do
       true ->
         {:error, Error.exception(reason: :overwrites, path: path)}
 
       false ->
-        {source, source_opts} = extension_for_file(rewrite, path)
-        opts = Keyword.merge(source_opts, opts)
-        source = source.from_string(content, path, opts)
+        source = create_source(rewrite, path, content, opts)
         put(rewrite, source)
     end
   end
@@ -743,6 +749,27 @@ defmodule Rewrite do
       {:ok, rewrite} -> rewrite
       {:error, error} -> raise error
     end
+  end
+
+  @doc """
+  Creates a new `%Source{}` without putting it to the `%Rewrite{}` project.
+
+  The `:filetypes` option of the project is used to create the source. If 
+  options have been specified for the file type, the given options will be 
+  merged into those options. If no `path` is given, the default file type is 
+  created.
+
+  The function does not check whether the `%Rewrite{}` project already has a 
+  `%Source{}` with the specified path.
+
+  Use `new_source/4` if the source is to be inserted directly into the project.
+  """
+  @spec create_source(t(), Path.t() | nil, String.t(), opts()) :: Source.t()
+  def create_source(%Rewrite{} = rewrite, path, content, opts \\ []) do
+    {source, source_opts} = extension_for_file(rewrite, path)
+    opts = Keyword.merge(source_opts, opts)
+    source = source.from_string(content, path, opts)
+    %{source | rewrite_id: rewrite.id}
   end
 
   defp extensions(modules) do

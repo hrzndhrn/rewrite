@@ -758,7 +758,7 @@ defmodule Rewrite.DotFormatter do
   """
   @spec conflicts(t(), Rewrite.t() | nil) :: [{Path.t(), [dot_formatter_path]}]
         when dot_formatter_path: Path.t()
-  def conflicts(dot_formatter, project \\ nil)
+  def conflicts(dot_formatter, rewrite \\ nil)
 
   def conflicts(%DotFormatter{} = dot_formatter, nil) do
     dot_formatter
@@ -766,9 +766,9 @@ defmodule Rewrite.DotFormatter do
     |> do_conflicts()
   end
 
-  def conflicts(%DotFormatter{} = dot_formatter, %Rewrite{} = project) do
+  def conflicts(%DotFormatter{} = dot_formatter, %Rewrite{} = rewrite) do
     dot_formatter
-    |> expand(project, source_path: true)
+    |> expand(rewrite, source_path: true)
     |> do_conflicts()
   end
 

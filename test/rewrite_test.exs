@@ -990,6 +990,23 @@ defmodule RewriteTest do
     end
   end
 
+  describe "create_source/4" do
+    test "creates a source" do
+      rewrite = Rewrite.new()
+      assert source = Rewrite.create_source(rewrite, "test.ex", "test")
+      assert is_struct(source.filetype, Source.Ex)
+      assert rewrite.id == source.rewrite_id
+    end
+
+    test "creates a default source" do
+      rewrite = Rewrite.new()
+      Rewrite.create_source(rewrite, nil, "test")
+      assert source = Rewrite.create_source(rewrite, nil, "test")
+      refute is_struct(source.filetype, Source.Ex)
+      assert rewrite.id == source.rewrite_id
+    end
+  end
+
   describe "format/2" do
     @describetag :tmp_dir
     test "formats the rewrite project", context do
