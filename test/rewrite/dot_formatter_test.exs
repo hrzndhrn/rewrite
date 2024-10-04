@@ -1618,23 +1618,25 @@ defmodule Rewrite.DotFormatterTest do
       assert {:error, %DotFormatterError{}} = DotFormatter.create(inputs: :foo)
     end
 
-    test "creates a dot formatter with plugin" do
-      assert {:ok, dot_formatter} =
-               DotFormatter.create(
-                 inputs: ["*.ex"],
-                 plugins: [AltExWrapperPlugin],
-                 from_formatter_exs: :yes
-               )
+    test "creates a dot formatter with plugin", context do
+      in_tmp context do
+        assert {:ok, dot_formatter} =
+                 DotFormatter.create(
+                   inputs: ["*.ex"],
+                   plugins: [AltExWrapperPlugin],
+                   from_formatter_exs: :yes
+                 )
 
-      assert %Rewrite.DotFormatter{
-               inputs: [~g|*.ex|d],
-               path: "",
-               plugin_opts: [{:from_formatter_exs, :yes}],
-               plugins: [AltExWrapperPlugin],
-               source: ".formatter.exs",
-               subs: [],
-               timestamp: _timestamp
-             } = dot_formatter
+        assert %Rewrite.DotFormatter{
+                 inputs: [~g|*.ex|d],
+                 path: "",
+                 plugin_opts: [{:from_formatter_exs, :yes}],
+                 plugins: [AltExWrapperPlugin],
+                 source: ".formatter.exs",
+                 subs: [],
+                 timestamp: _timestamp
+               } = dot_formatter
+      end
     end
 
     @tag :project
