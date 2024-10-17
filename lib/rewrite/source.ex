@@ -789,19 +789,9 @@ defmodule Rewrite.Source do
     )
   end
 
-  @doc ~S'''
+  @doc """
   Calculates the current hash from the given `source`.
-
-  ## Examples
-
-      iex> source = Source.from_string("""
-      ...> defmodule Foo do
-      ...>   def bar, do: :bar
-      ...> end
-      ...> """)
-      iex> Source.hash(source)
-      <<76, 24, 5, 252, 117, 230, 0, 217, 129, 150, 68, 248, 6, 48, 72, 46>>
-  '''
+  """
   @spec hash(t()) :: binary()
   def hash(%Source{path: path, content: content}), do: hash(path, content)
 
@@ -867,9 +857,9 @@ defmodule Rewrite.Source do
     undo(source, number - 1)
   end
 
-  defp hash(nil, code), do: :crypto.hash(:md5, code)
+  defp hash(nil, code), do: :crypto.hash(:sha256, code)
 
-  defp hash(path, code), do: :crypto.hash(:md5, path <> code)
+  defp hash(path, code), do: :crypto.hash(:sha256, path <> code)
 
   defp update_history(%Source{history: history} = source, key, by, legacy) do
     %{source | history: [{key, by, legacy} | history]}

@@ -467,7 +467,7 @@ defmodule Rewrite.SourceTest do
 
   defp hash(path) do
     content = File.read!(path)
-    :crypto.hash(:md5, path <> content)
+    :crypto.hash(:sha256, path <> content)
   end
 
   defp now(diff \\ 0) do
