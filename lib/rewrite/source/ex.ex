@@ -8,14 +8,15 @@ defmodule Rewrite.Source.Ex do
 
   `Ex` extends the `source` by the key `:quoted`.
 
-  ## Updating and syncing `:quoted`
+  ## Updating and resyncing `:quoted`
 
   When `:quoted` becomes updated, content becomes formatted to the Elixir source
   code. To keep the code in `:content` in sync with the AST in `:quoted`, the
   new code is parsed to a new `:quoted`. That means that
   `Source.update(source, :quoted, quoted)` also updates the AST.
 
-  The syncing of `:quoted` can be suppressed with the option `sync_quoted: false`.
+  The resyncing of `:quoted` can be suppressed with the option 
+  `resync_quoted: false`.
 
   ## Examples
 
@@ -61,9 +62,9 @@ defmodule Rewrite.Source.Ex do
       iex> Source.get(source, :quoted) == quoted
       false
 
-  Without syncing `:quoted`:
+  Without resyncing `:quoted`:
 
-      iex> project = Rewrite.new(filetypes: [{Source.Ex, sync_quoted: false}])
+      iex> project = Rewrite.new(filetypes: [{Source.Ex, resync_quoted: false}])
       iex> path = "test/fixtures/source/simple.ex"
       iex> project = Rewrite.read!(project, path)
       iex> source = Rewrite.source!(project, path)
@@ -85,17 +86,19 @@ defmodule Rewrite.Source.Ex do
   alias Sourceror.Zipper
 
   @enforce_keys [:quoted]
-  defstruct [:quoted, :opts]
+  defstruct [:quoted, opts: []]
 
   @type t :: %Ex{
           quoted: Macro.t(),
-          opts: nil | keyword()
+          opts: keyword()
         }
+
+  @extensions [".ex", ".exs"]
 
   @behaviour Rewrite.Filetype
 
   @impl Rewrite.Filetype
-  def extensions, do: [".ex", ".exs"]
+  def extensions, do: @extensions
 
   @doc """
   Returns a `%Rewrite.Source{}` with an added `:filetype`.
@@ -119,7 +122,7 @@ defmodule Rewrite.Source.Ex do
 
   ## Options
 
-    * `:sync_quoted`, default: `true` - forcing the re-parsing when the source
+    * `:resync_quoted`, default: `true` - forcing the re-parsing when the source
       field `quoted` is updated.
   """
   @impl Rewrite.Filetype
@@ -137,8 +140,10 @@ defmodule Rewrite.Source.Ex do
   end
 
   @impl Rewrite.Filetype
-  def handle_update(%Source{} = source, :quoted, quoted) do
+  def handle_update(%Source{} = source, :quoted, value) do
     %Source{filetype: %Ex{} = ex} = source
+
+    quoted = quoted(value, ex.quoted)
 
     if ex.quoted == quoted do
       []
@@ -149,13 +154,16 @@ defmodule Rewrite.Source.Ex do
     end
   end
 
+  defp quoted(updater, current) when is_function(updater, 1), do: updater.(current)
+  defp quoted(quoted, _current), do: quoted
+
   defp update_quoted(%Source{filetype: %Ex{} = ex} = source, quoted) do
     file = if source.path, do: source.path, else: "nofile.ex"
     dot_formatter = dot_formatter(source)
     code = DotFormatter.format_quoted!(dot_formatter, file, quoted)
 
     quoted =
-      case sync_quoted?(ex) do
+      case resync_quoted?(ex) do
         true -> Sourceror.parse_string!(code)
         false -> quoted
       end
@@ -244,8 +252,7 @@ defmodule Rewrite.Source.Ex do
       end
       """
   '''
-  @spec format(Source.t(), formatter_opts :: keyword() | nil) ::
-          String.t()
+  @spec format(Source.t(), formatter_opts :: keyword() | nil) :: String.t()
   def format(%Source{filetype: %Ex{}} = source, formatter_opts \\ []) do
     file = if source.path, do: source.path, else: "nofile.ex"
     dot_formatter = dot_formatter(source)
@@ -253,7 +260,7 @@ defmodule Rewrite.Source.Ex do
   end
 
   defp add_filetype(source, opts) do
-    opts = if opts, do: Keyword.take(opts, [:formatter_opts, :sync_quoted])
+    opts = if opts, do: Keyword.take(opts, [:formatter_opts, :resync_quoted])
 
     ex =
       struct!(Ex,
@@ -289,7 +296,11 @@ defmodule Rewrite.Source.Ex do
 
   defp concat({:__aliases__, _meta, module}), do: Module.concat(module)
 
-  defp sync_quoted?(%Ex{opts: nil}), do: true
+  defp resync_quoted?(%Ex{opts: opts}), do: Keyword.get(opts, :resync_quoted, true)
 
-  defp sync_quoted?(%Ex{opts: opts}), do: Keyword.get(opts, :sync_quoted, true)
+  defimpl Inspect do
+    def inspect(_source, _opts) do
+      "#Rewrite.Source.Ex<.ex,.exs>"
+    end
+  end
 end

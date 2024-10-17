@@ -1,23 +1,26 @@
 defmodule Rewrite do
+  # TODO: update @moduledoc
   @moduledoc """
   `Rewrite` provides a struct that contains all resources that could be handeld
   by `Rewrite`.
   """
 
-  alias Rewrite.Source
-
   alias Rewrite.DotFormatter
   alias Rewrite.Error
   alias Rewrite.KeyValueStore
+  alias Rewrite.Source
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
 
-  defstruct [:id, sources: %{}, extensions: %{}]
+  defstruct [:id, sources: %{}, extensions: %{}, hooks: []]
 
   @type t :: %Rewrite{sources: %{Path.t() => Source.t()}}
   @type input :: Path.t() | wildcard() | GlobEx.t()
   @type wildcard :: IO.chardata()
   @type opts :: keyword()
+  @type by :: module()
+  @type key :: atom()
+  @type updater :: (term() -> term())
 
   @doc """
   Creates an empty project.
@@ -25,7 +28,7 @@ defmodule Rewrite do
   ## Options
 
     * `:filetypes` - a list of modules implementing the behavior 
-      `Rewrite.Filetye`. This list is used to add the `filetype` to the 
+      `Rewrite.Filetype`. This list is used to add the `filetype` to the 
       `sources` of the corresponding files. The list can contain modules 
       representing a file type or a tuple of `{module(), keyword()}`. Rewrite 
       uses the keyword list from the tuple as the options argument when a file
@@ -55,9 +58,14 @@ defmodule Rewrite do
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
-    extensions = Keyword.get(opts, :filetypes, [Source, Source.Ex])
-    rewrite = %Rewrite{id: System.unique_integer([:positive]), extensions: extensions(extensions)}
-    dot_formatter(rewrite, Keyword.get(opts, :dot_formatter))
+    Rewrite
+    |> struct!(
+      id: System.unique_integer([:positive]),
+      extensions: extensions(opts),
+      hooks: Keyword.get(opts, :hooks, [])
+    )
+    |> dot_formatter(Keyword.get(opts, :dot_formatter))
+    |> handle_hooks(:new)
   end
 
   @doc """
@@ -101,7 +109,9 @@ defmodule Rewrite do
           raise error
       end)
 
-    %{rewrite | sources: sources}
+    rewrite
+    |> Map.put(:sources, sources)
+    |> handle_hooks({:added, inputs})
   end
 
   defp reader(paths, extensions, force) do
@@ -167,7 +177,10 @@ defmodule Rewrite do
 
       false ->
         source = %{source | rewrite_id: rewrite.id}
-        {:ok, %{rewrite | sources: Map.put(sources, path, source)}}
+        rewrite = %{rewrite | sources: Map.put(sources, path, source)}
+        rewrite = handle_hooks(rewrite, {:added, [path]})
+
+        {:ok, rewrite}
     end
   end
 
@@ -183,8 +196,10 @@ defmodule Rewrite do
   end
 
   @doc """
-  Deletes the source for the given `path` from the `rewrite`. The file on disk
-  is not removed.
+  Deletes the source for the given `path` from the `rewrite`. 
+
+  The file system files are not removed, even if the project is written. Use 
+  `rm/2` or `rm!/2` to delete a file and source.
 
   If the source is not part of the `rewrite` project the unchanged `rewrite` is
   returned.
@@ -216,7 +231,8 @@ defmodule Rewrite do
   @doc """
   Drops the sources with the given `paths` from the `rewrite` project.
 
-  The files for the dropped sources are not removed from disk.
+  The file system files are not removed, even if the project is written. Use 
+  `rm/2` or `rm!/2` to delete a file and source.
 
   If `paths` contains paths that are not in `rewrite`, they're simply ignored.
 
@@ -237,20 +253,25 @@ defmodule Rewrite do
   end
 
   @doc """
-  Tries to delete the `source` file and removes the `source` from the `rewrite`
-  project.
+  Tries to delete the `source` file in the file system and removes the `source` 
+  from the `rewrite` project.
 
   Returns `{:ok, rewrite}` if successful, or `{:error, error}` if an error
   occurs.
 
   Note the file is deleted even if in read-only mode.
   """
-  @spec rm(t(), Path.t()) ::
+  @spec rm(t(), Source.t() | Path.t()) ::
           {:ok, t()} | {:error, Error.t() | SourceError.t()}
-  def rm(%Rewrite{} = rewrite, path) when is_binary(path) do
-    with {:ok, source} <- source(rewrite, path),
-         :ok <- Source.rm(source) do
+  def rm(%Rewrite{} = rewrite, %Source{} = source) do
+    with :ok <- Source.rm(source) do
       {:ok, delete(rewrite, source.path)}
+    end
+  end
+
+  def rm(%Rewrite{} = rewrite, source) when is_binary(source) do
+    with {:ok, source} <- source(rewrite, source) do
+      rm(rewrite, source)
     end
   end
 
@@ -260,6 +281,43 @@ defmodule Rewrite do
   @spec rm!(t(), Source.t() | Path.t()) :: t()
   def rm!(%Rewrite{} = rewrite, source) when is_binary(source) or is_struct(source, Source) do
     case rm(rewrite, source) do
+      {:ok, rewrite} -> rewrite
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Moves a source from one path to another.
+  """
+  @spec move(t(), Source.t() | Path.t(), Path.t(), module()) :: {:ok, t()} | {:error, term()}
+  def move(rewrite, from, to, by \\ Rewrite)
+
+  def move(%Rewrite{} = rewrite, from, to, by)
+      when is_struct(from, Source) and is_binary(to) and is_atom(by) do
+    case Map.has_key?(rewrite.sources, to) do
+      true ->
+        {:error, UpdateError.exception(reason: :overwrites, path: to, source: from)}
+
+      false ->
+        update(rewrite, from.path, fn source ->
+          Source.update(source, by, :path, to)
+        end)
+    end
+  end
+
+  def move(%Rewrite{} = rewrite, from, to, by)
+      when is_binary(from) and is_binary(to) and is_atom(by) do
+    with {:ok, source} <- source(rewrite, from) do
+      move(rewrite, source, to, by)
+    end
+  end
+
+  @doc """
+  Same as `move/4`, but raises an exception in case of failure.
+  """
+  @spec move!(t(), Source.t() | Path.t(), Path.t(), module()) :: t()
+  def move!(%Rewrite{} = rewrite, from, to, by \\ Rewrite) do
+    case move(rewrite, from, to, by) do
       {:ok, rewrite} -> rewrite
       {:error, error} -> raise error
     end
@@ -305,8 +363,8 @@ defmodule Rewrite do
   Returns `{:error, error}` for sources with a missing path and/or duplicated
   paths.
   """
-  @spec from_sources([Source.t()], [module()]) :: {:ok, t()} | {:error, Error.t()}
-  def from_sources(sources, filetypes \\ [Source.Ex]) when is_list(sources) do
+  @spec from_sources([Source.t()], opts()) :: {:ok, t()} | {:error, term()}
+  def from_sources(sources, opts \\ []) when is_list(sources) do
     {sources, missing, duplicated} =
       Enum.reduce(sources, {%{}, [], []}, fn %Source{} = source, {sources, missing, duplicated} ->
         cond do
@@ -322,7 +380,21 @@ defmodule Rewrite do
       end)
 
     if Enum.empty?(missing) && Enum.empty?(duplicated) do
-      {:ok, struct!(Rewrite, sources: sources, extensions: extensions(filetypes))}
+      rewrite = new(opts)
+
+      sources =
+        Enum.into(sources, %{}, fn {path, source} ->
+          {path, %{source | rewrite_id: rewrite.id}}
+        end)
+
+      rewrite = %{rewrite | sources: sources}
+
+      rewrite =
+        rewrite
+        |> Map.put(:sources, sources)
+        |> handle_hooks({:added_sources, sources})
+
+      {:ok, rewrite}
     else
       {:error,
        Error.exception(
@@ -337,9 +409,9 @@ defmodule Rewrite do
   Same as `from_sources/2`, but raises a `Rewrite.Error` exception in case of
   failure.
   """
-  @spec from_sources!([Source.t()], [module()]) :: t()
-  def from_sources!(sources, filetypes \\ [Source.Ex]) when is_list(sources) do
-    case from_sources(sources, filetypes) do
+  @spec from_sources!([Source.t()], opts()) :: t()
+  def from_sources!(sources, opts \\ []) when is_list(sources) do
+    case from_sources(sources, opts) do
       {:ok, rewrite} -> rewrite
       {:error, error} -> raise error
     end
@@ -417,7 +489,7 @@ defmodule Rewrite do
   If `source` a `Rewrite.Source` struct the struct is used to update the
   `rewrite` project.
 
-  If `source` a function the source for the given `path` is passed to the
+  If `source` is a function the source for the given `path` is passed to the
   function and the result is used to update the `rewrite` project.
 
   Returns `{:ok, rewrite}` if the update was successful, `{:error, error}`
@@ -467,7 +539,9 @@ defmodule Rewrite do
   defp do_update(rewrite, path, source) do
     case path == source.path do
       true ->
-        {:ok, %{rewrite | sources: Map.put(rewrite.sources, path, source)}}
+        rewrite = %{rewrite | sources: Map.put(rewrite.sources, path, source)}
+        rewrite = handle_hooks(rewrite, {:updated, path})
+        {:ok, rewrite}
 
       false ->
         case Map.has_key?(rewrite.sources, source.path) do
@@ -503,6 +577,46 @@ defmodule Rewrite do
   @spec update!(t(), Path.t(), Source.t() | function()) :: t()
   def update!(%Rewrite{} = rewrite, path, new) when is_binary(path) do
     case update(rewrite, path, new) do
+      {:ok, rewrite} -> rewrite
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Updates the source for the given `path` and `key` with the given `fun`.
+
+  The function combines `update/3` and `Source.update/4` in one call.
+
+  ## Examples
+
+      iex> project =
+      ...>   Rewrite.new()
+      ...>   |> Rewrite.new_source!("test.md", "foo")
+      ...>   |> Rewrite.update_source!("test.md", :content, fn content ->
+      ...>     content <> "bar"
+      ...>   end)
+      ...>   |> Rewrite.update_source!(MyApp, "test.md", :content, &String.upcase/1)
+      iex> source = Rewrite.source!(project, "test.md")
+      iex> source.content
+      "FOOBAR"
+      iex> source.history
+      [{:content, MyApp, "foobar"}, {:content, Rewrite, "foo"}]
+  """
+  @spec update_source(t(), by(), Path.t(), key(), updater()) ::
+          {:ok, t()} | {:error, term()}
+  def update_source(%Rewrite{} = rewrite, by \\ Rewrite, path, key, fun) do
+    update(rewrite, path, fn source ->
+      Source.update(source, by, key, fun)
+    end)
+  end
+
+  @doc """
+  The same as `update_source/5` but raises a `Rewrite.Error` exception in case
+  of an error.
+  """
+  @spec update_source(t(), by(), Path.t(), key(), updater()) :: t()
+  def update_source!(%Rewrite{} = rewrite, by \\ Rewrite, path, key, fun) do
+    case update_source(rewrite, by, path, key, fun) do
       {:ok, rewrite} -> rewrite
       {:error, error} -> raise error
     end
@@ -619,6 +733,17 @@ defmodule Rewrite do
   end
 
   @doc """
+  The same as `write/3` but raises an exception in case of an error.
+  """
+  @spec write!(t(), Path.t() | Source.t(), nil | :force) :: t()
+  def write!(%Rewrite{} = rewrite, source, force \\ nil) do
+    case write(rewrite, source, force) do
+      {:ok, rewrite} -> rewrite
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
   Writes all sources in the `rewrite` project to disk.
 
   This function calls `Rewrite.Source.write/1` on all sources in the `rewrite`
@@ -658,42 +783,65 @@ defmodule Rewrite do
         end
       end)
 
-    if Enum.empty?(errors), do: {:ok, rewrite}, else: {:error, errors, rewrite}
+    if Enum.empty?(errors) do
+      {:ok, rewrite}
+    else
+      {:error, errors, rewrite}
+    end
   end
 
   @doc """
   Formats the given `rewrite` project with the given `dot_formatter`.
 
-  If no `dot_formatter` is given, the `%DotFormatter{}` from 
-  `dot_formatter(rewrite)` is used.
-
-  The options are the same as for `DotFormatter.read/2`.
+  Uses the formatter from `dot_formatter/2` if no formatter ist set by 
+  `:dot_formatter` in the options. The other options are the same as for 
+  `DotFormatter.read!/2`. 
   """
-  @spec format(t(), DotFormatter.t() | keyword() | nil, keyword()) :: {:ok, t()}
-  def format(rewrite, dot_formatter \\ nil, opts \\ [])
-
-  def format(%Rewrite{} = rewrite, nil, [] = opts) do
-    dot_formatter = dot_formatter(rewrite)
-    format(rewrite, dot_formatter, opts)
-  end
-
-  def format(%Rewrite{} = rewrite, opts, _opts) when is_list(opts) do
-    dot_formatter = dot_formatter(rewrite)
-    format(rewrite, dot_formatter, opts)
-  end
-
-  def format(%Rewrite{} = rewrite, dot_formatter, opts) do
+  @spec format(t(), opts()) :: {:ok, t()} | {:error, term()}
+  def format(%Rewrite{} = rewrite, opts \\ []) do
+    dot_formatter = Keyword.get_lazy(opts, :dot_formatter, fn -> dot_formatter(rewrite) end)
     DotFormatter.format_rewrite(dot_formatter, rewrite, opts)
   end
 
   @doc """
-  Formats a source in a `rewrite` project with the given `dot_formatter`.
-
-  The options are the same as for `Code.format_string!/2`.
+  The same as `format/2` but raises an exception in case of an error.
   """
-  @spec format_source(t(), DotFormatter.t(), String.t(), keyword()) :: {:ok, t()}
-  def format_source(%Rewrite{} = rewrite, %DotFormatter{} = dot_formatter, file, opts \\ []) do
+  @spec format!(t(), opts()) :: t()
+  def format!(rewrite, opts \\ []) do
+    case format(rewrite, opts) do
+      {:ok, rewrite} -> rewrite
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Formats a source in a `rewrite` project.
+
+  Uses the formatter from `dot_formatter/2` if no formatter ist set by 
+  `:dot_formatter` in the options. The other options are the same as for 
+  `Code.format_string!/2`. 
+  """
+  @spec format_source(t(), Path.t() | Source.t(), keyword()) :: {:ok, t()} | {:error, term()}
+  def format_source(rewrite, file, opts \\ [])
+
+  def format_source(%Rewrite{} = rewrite, %Source{path: path}, opts) when is_binary(path) do
+    format_source(rewrite, path, opts)
+  end
+
+  def format_source(%Rewrite{} = rewrite, file, opts) do
+    dot_formatter = Keyword.get_lazy(opts, :dot_formatter, fn -> dot_formatter(rewrite) end)
     DotFormatter.format_source(dot_formatter, rewrite, file, opts)
+  end
+
+  @doc """
+  The same as `format_source/3` but raises an exception in case of an error.
+  """
+  @spec format_source!(t(), Path.t() | Source.t(), keyword()) :: t()
+  def format_source!(rewrite, file, opts \\ []) do
+    case format_source(rewrite, file, opts) do
+      {:ok, source} -> source
+      {:error, error} -> raise error
+    end
   end
 
   @doc """
@@ -772,8 +920,9 @@ defmodule Rewrite do
     %{source | rewrite_id: rewrite.id}
   end
 
-  defp extensions(modules) do
-    modules
+  defp extensions(opts) do
+    opts
+    |> Keyword.get(:filetypes, [Source, Source.Ex])
     |> Enum.flat_map(fn
       Source ->
         [{"default", Source}]
@@ -831,6 +980,46 @@ defmodule Rewrite do
     def reduce(rewrite, acc, fun) do
       sources = Map.values(rewrite.sources)
       Enumerable.List.reduce(sources, acc, fun)
+    end
+  end
+
+  defp handle_hooks(%{hooks: []} = rewrite, _action), do: rewrite
+
+  defp handle_hooks(rewrite, {:added_sources, sources}) do
+    paths = Enum.map(sources, fn {path, _source} -> path end)
+    handle_hooks(rewrite, {:added, paths})
+  end
+
+  defp handle_hooks(%{hooks: hooks} = rewrite, action) do
+    if KeyValueStore.get_and_update(rewrite, :locked, true, false) do
+      rewrite
+    else
+      rewrite =
+        Enum.reduce(hooks, rewrite, fn hook, rewrite ->
+          case hook.handle(action, rewrite) do
+            :ok ->
+              rewrite
+
+            {:ok, rewrite} ->
+              rewrite
+
+            unexpected ->
+              raise Error.exception(
+                      reason: :unexpected_hook_response,
+                      message: """
+                      unexpected response from hook, got: #{inspect(unexpected)}\
+                      """
+                    )
+          end
+        end)
+
+      KeyValueStore.put(rewrite, :locked, false)
+    end
+  end
+
+  defimpl Inspect do
+    def inspect(rewrite, _opts) do
+      "#Rewrite<#{Enum.count(rewrite.sources)} source(s)>"
     end
   end
 end

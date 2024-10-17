@@ -1,10 +1,15 @@
 defmodule Rewrite.DotFormatterError do
+  @moduledoc """
+  An exception raised when an error is encountered while working with 
+  dot_formatters.
+  """
+
   defexception [:reason, :path, :not_formatted, :exits]
 
   @type t :: %{reason: reason(), path: Path.t(), not_formatted: [Path.t()], exits: exits()}
 
   @type reason :: atom() | {atom(), term()}
-  @type exits :: any()
+  @type exits :: term()
 
   def message(%{reason: {:read, :enoent}, path: path}) do
     "Could not read file #{inspect(path)}: no such file or directory"
@@ -14,18 +19,26 @@ defmodule Rewrite.DotFormatterError do
     "#{path} not found"
   end
 
-  def message(%{reason: {:subdirectories, subdirectories}, path: path}) do
+  def message(%{reason: {:invalid_subdirectories, subdirectories}, path: path}) do
     """
     Expected :subdirectories to return a list of directories, \
     got: #{inspect(subdirectories)}, in: #{inspect(path)}\
     """
   end
 
-  def message(%{reason: {:import_deps, import_deps}, path: path}) do
+  def message(%{reason: {:invalid_import_deps, import_deps}, path: path}) do
     """
     Expected :import_deps to return a list of dependencies, \
     got: #{inspect(import_deps)}, in: #{inspect(path)}\
     """
+  end
+
+  def message(%{reason: {:invalid_remove_plugins, remove_plugins}}) do
+    "Expected :remove_plugins to be a list of modules, got: #{inspect(remove_plugins)}"
+  end
+
+  def message(%{reason: {:invalid_replace_plugins, replace_plugins}}) do
+    "Expected :replace_plugins to be a list of tuples, got: #{inspect(replace_plugins)}"
   end
 
   def message(%{reason: :no_inputs_or_subdirectories, path: path}) do
@@ -48,31 +61,16 @@ defmodule Rewrite.DotFormatterError do
     """
   end
 
-  def message(%{reason: {:invalid_dot_formatter, [_ | _] = dot_formatters}, path: path}) do
+  def message(%{reason: {:conflicts, dot_formatters}}) do
     dot_formatters =
-      Enum.map(dot_formatters, fn dot_formatter ->
-        Path.join(dot_formatter.path, dot_formatter.source)
+      Enum.map_join(dot_formatters, "\n", fn {file, formatters} ->
+        nil
+        "file: #{inspect(file)}, formatters: #{inspect(formatters)}"
       end)
 
     """
-    Multiple dot-formatters specifying the file #{inspect(path)} in their :inputs \
-    options, dot-formatters: #{inspect(dot_formatters)}\
-    """
-  end
-
-  def message(%{reason: {:invalid_dot_formatter, []}, path: path}) do
-    "No formatter specifies the file #{inspect(path)} in its :inputs option"
-  end
-
-  def message(%{reason: {:undefined_quoted_to_algebra, plugin}}) do
-    """
-    The plugin #{inspect(plugin)} replaces the Elixir formatter. Therefore, the \
-    plugin needs to be replaced with a wrapped plugin that implements the \
-    Rewrite.DotFormatter behaviour. 
-    A plugin can be replaced by:
-
-      DotFormatter.eval(replace_plugins: [{#{inspect(plugin)}, WrapPlugin}])
-
+    Multiple formatter files specifying the same file in their :inputs options:
+    #{dot_formatters}\
     """
   end
 
@@ -82,6 +80,14 @@ defmodule Rewrite.DotFormatterError do
 
   def message(%{reason: {:invalid_input, input}}) do
     "Invalid input, got: #{inspect(input)}"
+  end
+
+  def message(%{reason: {:invalid_inputs, inputs}}) do
+    "Invalid inputs, got: #{inspect(inputs)}"
+  end
+
+  def message(%{reason: {:invalid_locals_without_parens, locals_without_parens}}) do
+    "Invalid locals_without_parens, got: #{inspect(locals_without_parens)}"
   end
 
   def message(%{reason: {:no_subs, dirs}}) do

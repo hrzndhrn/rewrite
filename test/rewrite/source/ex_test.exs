@@ -42,7 +42,19 @@ defmodule Rewrite.Source.ExTest do
       assert source.content == ":x\n"
     end
 
-    test "updates quoted with sync_quoted: true" do
+    test "updates quoted with function" do
+      source = Source.Ex.from_string(":a", "a.exs")
+
+      source =
+        Source.update(source, :quoted, fn quoted ->
+          {:__block__, meta, [atom]} = quoted
+          {:__block__, meta, [{:ok, atom}]}
+        end)
+
+      assert source.content == "{:ok, :a}\n"
+    end
+
+    test "updates quoted with resync_quoted: true" do
       source = Source.Ex.from_string(":a", "a.exs")
 
       {:ok, quoted} =
@@ -57,8 +69,8 @@ defmodule Rewrite.Source.ExTest do
       assert Source.get(source, :quoted) != quoted
     end
 
-    test "updates quoted with sync_quoted: false" do
-      source = Source.Ex.read!("test/fixtures/source/simple.ex", sync_quoted: false)
+    test "updates quoted with resync_quoted: false" do
+      source = Source.Ex.read!("test/fixtures/source/simple.ex", resync_quoted: false)
 
       {:ok, quoted} =
         Code.string_to_quoted("""
@@ -81,6 +93,12 @@ defmodule Rewrite.Source.ExTest do
       assert Source.get(source, :quoted) == Sourceror.parse_string!(":x")
     end
 
+    test "updates content without changing" do
+      source = Source.Ex.from_string(":a", "a.exs")
+      source = Source.update(source, :content, ":a")
+      assert Source.get(source, :content) == ":a"
+    end
+
     test "raises an error" do
       source = Source.Ex.from_string(":a")
       message = ~r/unexpected.reserved.word:.end/m
@@ -93,17 +111,17 @@ defmodule Rewrite.Source.ExTest do
     @tag :tmp_dir
     test "updates content with the rewrite dot formatter", context do
       in_tmp context do
-        write!(%{
-          ".formatter.exs" => """
+        write!(
+          ".formatter.exs": """
           [
             inputs: ["a.ex"],
             locals_without_parens: [foo: 1]
           ]
           """,
-          "a.ex" => """
+          "a.ex": """
           foo bar baz
           """
-        })
+        )
 
         rewrite = Rewrite.new!("**/*", dot_formatter: DotFormatter.read!())
 
@@ -189,5 +207,10 @@ defmodule Rewrite.Source.ExTest do
 
       assert Source.Ex.format(source) == "if x == 0, do: nil, else: x\n"
     end
+  end
+
+  test "inspect" do
+    source = Source.Ex.from_string(":a")
+    assert inspect(source.filetype) == "#Rewrite.Source.Ex<.ex,.exs>"
   end
 end

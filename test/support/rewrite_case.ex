@@ -39,15 +39,11 @@ defmodule TestHelpers do
     module
   end
 
-  def write!(files, content \\ nil, time \\ nil)
-
-  def write!(files, time, nil) when is_integer(time), do: write!(files, nil, time)
-
-  def write!(files, nil, time) do
-    Enum.map(files, fn {file, content} -> write!(file, content, time) end)
+  def write!(time \\ @time, files) when is_list(files) do
+    Enum.map(files, fn {file, content} -> file |> to_string() |> write!(content, time) end)
   end
 
-  def write!(path, content, time) do
+  defp write!(path, content, time) do
     dir = Path.dirname(path)
     unless dir == ".", do: path |> Path.dirname() |> File.mkdir_p!()
     File.write!(path, content)

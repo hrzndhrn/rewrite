@@ -15,17 +15,38 @@ defmodule Rewrite.KeyValueStore do
     rewrite
   end
 
+  def get(rewrite, key, default \\ nil)
+
   def get(%Rewrite{} = rewrite, key, default) do
     get(rewrite.id, key, default)
   end
 
   def get(id, key, default) when is_integer(id) do
     Agent.get(__MODULE__, fn state ->
-      case Map.fetch(state, {id, key}) do
-        :error -> default
-        {:ok, nil} -> default
-        {:ok, value} -> value
-      end
+      get_value(state, {id, key}, default)
     end)
+  end
+
+  def get_and_update(rewrite, key, value, default \\ nil)
+
+  def get_and_update(%Rewrite{} = rewrite, key, value, default) do
+    get_and_update(rewrite.id, key, value, default)
+  end
+
+  def get_and_update(id, key, value, default) when is_integer(id) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      result = get_value(state, {id, key}, default)
+      state = Map.put(state, {id, key}, value)
+
+      {result, state}
+    end)
+  end
+
+  defp get_value(map, key, default) do
+    case Map.fetch(map, key) do
+      :error -> default
+      {:ok, nil} -> default
+      {:ok, value} -> value
+    end
   end
 end

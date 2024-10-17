@@ -460,6 +460,11 @@ defmodule Rewrite.SourceTest do
     end
   end
 
+  test "inspect" do
+    source = Source.from_string("test", "foo.ex")
+    assert inspect(source) == "#Rewrite.Source<foo.ex>"
+  end
+
   defp hash(path) do
     content = File.read!(path)
     :crypto.hash(:md5, path <> content)

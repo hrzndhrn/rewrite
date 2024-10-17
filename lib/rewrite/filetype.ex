@@ -9,15 +9,11 @@ defmodule Rewrite.Filetype do
   alias Rewrite.Source
 
   @type t :: map()
-
   @type updates :: keyword()
-
   @type key :: atom()
-
-  @type value :: any()
-
+  @type value :: term()
+  @type updater :: (term() -> term())
   @type extension :: String.t()
-
   @type opts :: keyword()
 
   @doc """
@@ -36,7 +32,7 @@ defmodule Rewrite.Filetype do
   @doc """
   Returns a `Rewrite.Source` with a `filetype` form the `given`, `string` and `options`.
   """
-  @callback from_string(strong :: Source.content(), path :: Path.t() | nil, options :: opts()) ::
+  @callback from_string(strong :: Source.content(), path :: Path.t() | nil, opts()) ::
               Source.t()
 
   @doc """
@@ -46,7 +42,7 @@ defmodule Rewrite.Filetype do
   @doc """
   Returns a `Rewrite.Source` with a `filetype` from a file.
   """
-  @callback read!(path :: Path.t(), options :: opts()) :: Source.t()
+  @callback read!(path :: Path.t(), opts()) :: Source.t()
 
   @doc """
   This function is called after an undo of the `source`.
@@ -58,7 +54,7 @@ defmodule Rewrite.Filetype do
 
   Returns a `%Source{}` with an updated `filetype`.
   """
-  @callback handle_update(source :: Source.t(), key :: key()) :: t()
+  @callback handle_update(source :: Source.t(), key()) :: t()
 
   @doc """
   This function is called when the `source` is updated by a `key` that is
@@ -67,7 +63,7 @@ defmodule Rewrite.Filetype do
   Returns a keyword with the keys `:content` and `:filetype` to update the
   `source`.
   """
-  @callback handle_update(source :: Source.t(), key :: key(), value :: value()) :: updates()
+  @callback handle_update(source :: Source.t(), key(), value() | updater()) :: updates()
 
   @doc """
   Fetches the value for a specific `key` for the given `source`.
@@ -75,7 +71,7 @@ defmodule Rewrite.Filetype do
   If `source` contains the given `key` then its value is returned in the shape
   of {:ok, value}. If `source` doesn't contain key, :error is returned.
   """
-  @callback fetch(source :: Source.t(), key :: key()) :: value()
+  @callback fetch(source :: Source.t(), key()) :: value()
 
   @doc """
   Fetches the value for a specific `key` in a `source` for the given `version`.
@@ -83,5 +79,5 @@ defmodule Rewrite.Filetype do
   If `source` contains the given `key` then its value is returned in the shape
   of {:ok, value}. If `source` doesn't contain key, :error is returned.
   """
-  @callback fetch(source :: Source.t(), key :: key(), version :: Source.version()) :: value()
+  @callback fetch(source :: Source.t(), key(), version :: Source.version()) :: value()
 end
