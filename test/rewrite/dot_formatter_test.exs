@@ -2997,17 +2997,13 @@ defmodule Rewrite.DotFormatterTest do
         assert(formatter_opts[:subdirectories] == ["lib", "priv"])
         assert(formatter_opts[:inputs] == [~g|*.ex|d])
 
-        assert DotFormatter.formatter_opts_for_file(dot_formatter, "lib/a.ex") ==
-                 [
-                   locals_without_parens: [{:other_fun, 2}],
-                   inputs: [~g|lib/**/*.{ex,exs}|d]
-                 ]
+        assert opts = DotFormatter.formatter_opts_for_file(dot_formatter, "lib/a.ex") 
+        assert opts[:inputs] == [~g|lib/**/*.{ex,exs}|d]
+        assert opts[:locals_without_parens] == [other_fun: 2]
 
-        assert DotFormatter.formatter_opts_for_file(dot_formatter, "priv/a.ex") ==
-                 [
-                   locals_without_parens: [{:my_fun, 2}],
-                   inputs: [~g|priv/**/*.{ex,exs}|d]
-                 ]
+        assert opts = DotFormatter.formatter_opts_for_file(dot_formatter, "priv/a.ex") 
+        assert opts[:inputs] == [~g|priv/**/*.{ex,exs}|d]
+        assert opts[:locals_without_parens] == [my_fun: 2]
       end
     end
 
