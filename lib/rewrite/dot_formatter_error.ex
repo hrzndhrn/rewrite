@@ -64,7 +64,6 @@ defmodule Rewrite.DotFormatterError do
   def message(%{reason: {:conflicts, dot_formatters}}) do
     dot_formatters =
       Enum.map_join(dot_formatters, "\n", fn {file, formatters} ->
-        nil
         "file: #{inspect(file)}, formatters: #{inspect(formatters)}"
       end)
 
