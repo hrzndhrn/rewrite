@@ -22,18 +22,18 @@ defmodule Rewrite.Filetype do
   @callback extensions :: [extension] | :any
 
   @doc """
+  Returns the default path for the `filetype`.
+  """
+  @callback default_path :: Path.t()
+
+  @doc """
   Returns a `Rewrite.Source` with a `filetype` from the given `string`.
   """
   @callback from_string(string :: Source.content()) :: Source.t()
   @doc """
-  Returns a `Rewrite.Source` with a `filetype` from the given `string` and `path`.
+  Returns a `Rewrite.Source` with a `filetype` form the given, `string` and `options`.
   """
-  @callback from_string(string :: Source.content(), path :: Path.t() | nil) :: Source.t()
-  @doc """
-  Returns a `Rewrite.Source` with a `filetype` form the `given`, `string` and `options`.
-  """
-  @callback from_string(strong :: Source.content(), path :: Path.t() | nil, opts()) ::
-              Source.t()
+  @callback from_string(string :: Source.content(), opts()) :: Source.t()
 
   @doc """
   Returns a `Rewrite.Source` with a `filetype` from a file.

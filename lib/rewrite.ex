@@ -159,12 +159,12 @@ defmodule Rewrite do
   ## Examples
 
       iex> project = Rewrite.new()
-      iex> {:ok, project} = Rewrite.put(project, Source.from_string(":a", "a.exs"))
+      iex> {:ok, project} = Rewrite.put(project, Source.from_string(":a", path: "a.exs"))
       iex> map_size(project.sources)
       1
       iex> Rewrite.put(project, Source.from_string(":b"))
       {:error, %Rewrite.Error{reason: :nopath}}
-      iex> Rewrite.put(project, Source.from_string(":a", "a.exs"))
+      iex> Rewrite.put(project, Source.from_string(":a", path: "a.exs"))
       {:error, %Rewrite.Error{reason: :overwrites, path: "a.exs"}}
   """
   @spec put(t(), Source.t()) :: {:ok, t()} | {:error, Error.t()}
@@ -207,9 +207,9 @@ defmodule Rewrite do
   ## Examples
 
       iex> {:ok, project} = Rewrite.from_sources([
-      ...>   Source.from_string(":a", "a.exs"),
-      ...>   Source.from_string(":b", "b.exs"),
-      ...>   Source.from_string(":a", "c.exs")
+      ...>   Source.from_string(":a", path: "a.exs"),
+      ...>   Source.from_string(":b", path: "b.exs"),
+      ...>   Source.from_string(":a", path: "c.exs")
       ...> ])
       iex> Rewrite.paths(project)
       ["a.exs", "b.exs", "c.exs"]
@@ -239,9 +239,9 @@ defmodule Rewrite do
   ## Examples
 
       iex> {:ok, project} = Rewrite.from_sources([
-      ...>   Source.from_string(":a", "a.exs"),
-      ...>   Source.from_string(":b", "b.exs"),
-      ...>   Source.from_string(":a", "c.exs")
+      ...>   Source.from_string(":a", path: "a.exs"),
+      ...>   Source.from_string(":b", path: "b.exs"),
+      ...>   Source.from_string(":a", path: "c.exs")
       ...> ])
       iex> project = Rewrite.drop(project, ["a.exs", "b.exs", "z.exs"])
       iex> Rewrite.paths(project)
@@ -338,9 +338,9 @@ defmodule Rewrite do
   ## Examples
 
       iex> {:ok, project} = Rewrite.from_sources([
-      ...>   Source.Ex.from_string(":a", "a.exs"),
-      ...>   Source.Ex.from_string(":b", "b.exs"),
-      ...>   Source.Ex.from_string("c", "c.txt")
+      ...>   Source.Ex.from_string(":a", path: "a.exs"),
+      ...>   Source.Ex.from_string(":b", path: "b.exs"),
+      ...>   Source.Ex.from_string("c", path: "c.txt")
       ...> ])
       iex> Rewrite.updated?(project)
       false
@@ -497,10 +497,10 @@ defmodule Rewrite do
 
   ## Examples
 
-      iex> a = Source.Ex.from_string(":a", "a.exs")
-      iex> b = Source.Ex.from_string(":b", "b.exs")
+      iex> a = Source.Ex.from_string(":a", path: "a.exs")
+      iex> b = Source.Ex.from_string(":b", path: "b.exs")
       iex> {:ok, project} = Rewrite.from_sources([a, b])
-      iex> {:ok, project} = Rewrite.update(project, "a.exs", Source.Ex.from_string(":foo", "a.exs"))
+      iex> {:ok, project} = Rewrite.update(project, "a.exs", Source.Ex.from_string(":foo", path: "a.exs"))
       iex> project |> Rewrite.source!("a.exs") |> Source.get(:content)
       ":foo"
       iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, :content, ":baz") end)
@@ -509,7 +509,7 @@ defmodule Rewrite do
       iex> {:ok, project} = Rewrite.update(project, "a.exs", fn s -> Source.update(s, :path, "c.exs") end)
       iex> Rewrite.paths(project)
       ["b.exs", "c.exs"]
-      iex> Rewrite.update(project, "no.exs", Source.from_string(":foo", "x.exs"))
+      iex> Rewrite.update(project, "no.exs", Source.from_string(":foo", path: "x.exs"))
       {:error, %Rewrite.Error{reason: :nosource, path: "no.exs"}}
       iex> Rewrite.update(project, "c.exs", Source.from_string(":foo"))
       {:error, %Rewrite.UpdateError{reason: :nopath, source: "c.exs"}}
@@ -629,7 +629,7 @@ defmodule Rewrite do
   ## Examples
 
       iex> {:ok, project} = Rewrite.from_sources([
-      ...>   Source.from_string(":a", "a.exs")
+      ...>   Source.from_string(":a", path: "a.exs")
       ...> ])
       iex> Rewrite.has_source?(project, "a.exs")
       true
@@ -915,8 +915,8 @@ defmodule Rewrite do
   @spec create_source(t(), Path.t() | nil, String.t(), opts()) :: Source.t()
   def create_source(%Rewrite{} = rewrite, path, content, opts \\ []) do
     {source, source_opts} = extension_for_file(rewrite, path)
-    opts = Keyword.merge(source_opts, opts)
-    source = source.from_string(content, path, opts)
+    opts = source_opts |> Keyword.merge(opts) |> Keyword.put(:path, path)
+    source = source.from_string(content, opts)
     %{source | rewrite_id: rewrite.id}
   end
 

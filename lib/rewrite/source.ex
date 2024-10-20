@@ -13,6 +13,7 @@ defmodule Rewrite.Source do
   A source is extensible via `filetype`, see `Rewrite.Filetype`.
   """
 
+  alias Rewrite.DotFormatter
   alias Rewrite.Source
   alias Rewrite.SourceError
   alias Rewrite.SourceKeyError
@@ -26,6 +27,7 @@ defmodule Rewrite.Source do
     :filetype,
     :timestamp,
     :rewrite_id,
+    :dot_formatter,
     history: [],
     issues: [],
     private: %{}
@@ -139,7 +141,7 @@ defmodule Rewrite.Source do
 
   defp new(fields) do
     content = Keyword.fetch!(fields, :content)
-    path = Keyword.get(fields, :path, nil)
+    path = Keyword.get(fields, :path)
 
     struct!(
       Source,
@@ -147,17 +149,21 @@ defmodule Rewrite.Source do
       from: Keyword.fetch!(fields, :from),
       hash: hash(path, content),
       owner: Keyword.get(fields, :owner, Rewrite),
-      path: Keyword.get(fields, :path, nil),
-      timestamp: Keyword.fetch!(fields, :timestamp)
+      path: path,
+      timestamp: Keyword.fetch!(fields, :timestamp),
+      dot_formatter: Keyword.get(fields, :dot_formatter)
     )
   end
 
+  # TODO: add option path
   @doc """
   Creates a new `%Source{}` from the given `string`.
 
   ## Options
 
     * `:owner` - an association to the module that owns the `source`. 
+    * `:dot_formatter` - a fromatter for the `source`.
+    * `path` - the path of the `source`.
 
   ## Examples
 
@@ -169,18 +175,23 @@ defmodule Rewrite.Source do
       iex> source.owner
       Rewrite
 
-      iex> source = Source.from_string("hello", "hello.md", owner: MyApp)
+      iex> source = Source.from_string("hello", path: "hello.md", owner: MyApp)
       iex> source.path
       "hello.md"
       iex> source.owner
       MyApp
 
   """
-  @spec from_string(String.t(), Path.t() | nil, opts()) :: t()
-  def from_string(content, path \\ nil, opts \\ []) do
-    owner = Keyword.get(opts, :owner, Rewrite)
-
-    new(content: content, path: path, owner: owner, from: :string, timestamp: now())
+  @spec from_string(String.t(), opts()) :: t()
+  def from_string(content, opts \\ []) when is_list(opts) do
+    new(
+      content: content,
+      path: Keyword.get(opts, :path),
+      owner: Keyword.get(opts, :owner, Rewrite),
+      from: :string,
+      timestamp: now(),
+      dot_formatter: Keyword.get(opts, :dot_formatter)
+    )
   end
 
   @doc ~S"""
@@ -629,7 +640,7 @@ defmodule Rewrite.Source do
 
       iex> source =
       ...>   "a + b"
-      ...>   |> Source.Ex.from_string("some/where/plus.exs")
+      ...>   |> Source.Ex.from_string(path: "some/where/plus.exs")
       ...>   |> Source.add_issue(%{issue: :foo})
       ...>   |> Source.update(:path, "some/where/else/plus.exs")
       ...>   |> Source.add_issue(%{issue: :bar})
@@ -716,7 +727,7 @@ defmodule Rewrite.Source do
 
       iex> source =
       ...>   "hello"
-      ...>   |> Source.from_string("some/where/hello.txt")
+      ...>   |> Source.from_string(path: "some/where/hello.txt")
       ...>   |> Source.update(:path, "some/where/else/hello.txt")
       ...> Source.get(source, :path, 1)
       "some/where/hello.txt"
@@ -819,7 +830,7 @@ defmodule Rewrite.Source do
   Undoes the given `number` of changes.
 
   ## Examples
-      iex> a = Source.from_string("test-a", "test/foo.txt")
+      iex> a = Source.from_string("test-a", path: "test/foo.txt")
       iex> b = Source.update(a, :content, "test-b")
       iex> c = Source.update(b, :path, "test/bar.txt")
       iex> d = Source.update(c, :content, "test-d")
@@ -857,9 +868,53 @@ defmodule Rewrite.Source do
     undo(source, number - 1)
   end
 
-  defp hash(nil, code), do: :crypto.hash(:sha256, code)
+  @doc """
+  Formats the given `source` with the formatter returned by `dot_formatter/1`.
+  """
+  @spec format(t(), opts()) :: {:ok, t()} | {:errror, term()}
+  def format(%Source{} = source, opts \\ []) do
+    path = Map.get(source, :path) || default_path(source)
+    dot_fromatter = dot_formatter(source)
+    by = Keyword.get(opts, :by, Rewrite)
 
-  defp hash(path, code), do: :crypto.hash(:sha256, path <> code)
+    with {:ok, formatted} <- DotFormatter.format_string(dot_fromatter, path, source.content) do
+      {:ok, update(source, by, :content, formatted)}
+    end
+  end
+
+  @doc """
+  Same as `format/2`, but raises an exception in case of failure.
+  """
+  @spec format(t(), opts()) :: t()
+  def format!(%Source{} = source, opts \\ []) do
+    case format(source, opts) do
+      {:ok, source} -> source
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Returns the `%DotFormatter{}` for the given `source`.
+
+  If no formmatter can be found, returns the default from `DotFormatter.new()`.
+  """
+  @spec dot_formatter(t()) :: DotFormatter.t()
+  def dot_formatter(%Source{} = source) do
+    cond do
+      source.dot_formatter -> source.dot_formatter
+      source.rewrite_id -> Rewrite.dot_formatter(source.rewrite_id)
+      true -> DotFormatter.new()
+    end
+  end
+
+  @doc """
+  The default `path` for the `source`.
+  """
+  @spec default_path(t()) :: Path.t()
+  def default_path(%Source{filetype: %module{}}), do: module.default_path()
+  def default_path(_source), do: "nofile"
+
+  defp hash(path, code), do: :erlang.phash2({path, code})
 
   defp update_history(%Source{history: history} = source, key, by, legacy) do
     %{source | history: [{key, by, legacy} | history]}

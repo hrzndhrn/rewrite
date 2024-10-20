@@ -94,24 +94,23 @@ defmodule Rewrite.Source.Ex do
         }
 
   @extensions [".ex", ".exs"]
+  @default_path "nofile.ex"
 
   @behaviour Rewrite.Filetype
 
   @impl Rewrite.Filetype
   def extensions, do: @extensions
 
+  @impl Rewrite.Filetype
+  def default_path, do: @default_path
+
   @doc """
   Returns a `%Rewrite.Source{}` with an added `:filetype`.
   """
   @impl Rewrite.Filetype
-  def from_string(string, path \\ nil), do: do_from_string(string, path, [])
-
-  @impl Rewrite.Filetype
-  def from_string(string, path, opts), do: do_from_string(string, path, opts)
-
-  defp do_from_string(string, path, opts) do
+  def from_string(string, opts \\ []) do
     string
-    |> Source.from_string(path, opts)
+    |> Source.from_string(opts)
     |> add_filetype(opts)
   end
 
@@ -286,11 +285,12 @@ defmodule Rewrite.Source.Ex do
     |> Enum.filter(&is_atom/1)
   end
 
+  # TODO: remove, use Source.dot_formatter(source)
   defp dot_formatter(source) do
-    if source.rewrite_id do
-      Rewrite.dot_formatter(source.rewrite_id)
-    else
-      DotFormatter.new()
+    cond do
+      source.dot_formatter -> source.dot_formatter
+      source.rewrite_id -> Rewrite.dot_formatter(source.rewrite_id)
+      true -> DotFormatter.new()
     end
   end
 

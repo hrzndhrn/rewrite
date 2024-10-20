@@ -15,7 +15,7 @@ defmodule RewriteTest do
     test "adds a source to the project" do
       project = Rewrite.new()
 
-      assert project = Rewrite.put!(project, Source.from_string(":a", "a.exs"))
+      assert project = Rewrite.put!(project, Source.from_string(":a", path: "a.exs"))
       assert map_size(project.sources) == 1
     end
 
@@ -32,13 +32,13 @@ defmodule RewriteTest do
     test "raises an exception when overwrites" do
       {:ok, project} =
         Rewrite.from_sources([
-          Source.from_string(":a", "a.exs")
+          Source.from_string(":a", path: "a.exs")
         ])
 
       message = ~s'overwrites "a.exs"'
 
       assert_raise Error, message, fn ->
-        Rewrite.put!(project, Source.from_string(":b", "a.exs"))
+        Rewrite.put!(project, Source.from_string(":b", path: "a.exs"))
       end
     end
   end
@@ -342,10 +342,7 @@ defmodule RewriteTest do
                     from: :string,
                     path: "b.txt",
                     content: "b",
-                    hash:
-                      <<127, 206, 36, 203, 214, 203, 181, 208, 171, 136, 72, 65, 197, 208, 251,
-                        150, 43, 158, 218, 197, 202, 159, 100, 66, 96, 229, 86, 47, 135, 222, 164,
-                        128>>,
+                    hash: 103_569_618,
                     owner: Rewrite,
                     history: [],
                     issues: [],
@@ -355,14 +352,14 @@ defmodule RewriteTest do
                 }
               }} =
                Rewrite.from_sources([
-                 Source.from_string("b", "b.txt")
+                 Source.from_string("b", path: "b.txt")
                ])
 
       assert_in_delta timestamp, DateTime.utc_now() |> DateTime.to_unix(), 1
     end
 
     test "returns an error if path is missing" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       b = Source.from_string(":b")
 
       assert {:error, error} = Rewrite.from_sources([a, b])
@@ -377,8 +374,8 @@ defmodule RewriteTest do
     end
 
     test "returns an error if paths are duplicated" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "a.exs")
 
       assert {:error, error} = Rewrite.from_sources([a, b])
 
@@ -405,10 +402,7 @@ defmodule RewriteTest do
                    from: :string,
                    path: "b.txt",
                    content: "b",
-                   hash:
-                     <<127, 206, 36, 203, 214, 203, 181, 208, 171, 136, 72, 65, 197, 208, 251,
-                       150, 43, 158, 218, 197, 202, 159, 100, 66, 96, 229, 86, 47, 135, 222, 164,
-                       128>>,
+                   hash: 103_569_618,
                    owner: Rewrite,
                    history: [],
                    issues: [],
@@ -418,14 +412,14 @@ defmodule RewriteTest do
                }
              } =
                Rewrite.from_sources!([
-                 Source.from_string("b", "b.txt")
+                 Source.from_string("b", path: "b.txt")
                ])
 
       assert_in_delta timestamp, DateTime.utc_now() |> DateTime.to_unix(), 1
     end
 
     test "raises an error if path is missing" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       b = Source.from_string(":b")
 
       assert_raise Error, "invalid sources", fn ->
@@ -434,8 +428,8 @@ defmodule RewriteTest do
     end
 
     test "raises an error if paths are duplicated" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "a.exs")
 
       assert_raise Error, "invalid sources", fn ->
         Rewrite.from_sources!([a, b])
@@ -607,7 +601,7 @@ defmodule RewriteTest do
     end
 
     test "raises RuntimeError" do
-      {:ok, project} = Rewrite.from_sources([Source.from_string(":a", "a.exs")])
+      {:ok, project} = Rewrite.from_sources([Source.from_string(":a", path: "a.exs")])
 
       message = "expected %Source{} from anonymous function given to Rewrite.update/3, got: :foo"
 
@@ -646,8 +640,8 @@ defmodule RewriteTest do
 
   describe "update/2" do
     test "updates a source" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "a.exs")
       {:ok, project} = Rewrite.from_sources([a])
 
       {:ok, project} = Rewrite.update(project, b)
@@ -656,8 +650,8 @@ defmodule RewriteTest do
     end
 
     test "returns an error when path changed" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a])
 
       assert Rewrite.update(project, b) ==
@@ -665,7 +659,7 @@ defmodule RewriteTest do
     end
 
     test "returns an error when path is nil" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       b = Source.from_string(":b")
       {:ok, project} = Rewrite.from_sources([a])
 
@@ -676,7 +670,7 @@ defmodule RewriteTest do
   describe "update!/2" do
     test "raises an exception when source not in project" do
       project = Rewrite.new()
-      source = Source.from_string(":a", "a.exs")
+      source = Source.from_string(":a", path: "a.exs")
 
       message = ~s|no source found for "a.exs"|
 
@@ -699,8 +693,8 @@ defmodule RewriteTest do
 
   describe "update/3" do
     test "updates a source" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a])
 
       assert {:ok, project} = Rewrite.update(project, a.path, b)
@@ -709,8 +703,8 @@ defmodule RewriteTest do
     end
 
     test "updates a source with a function" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a])
 
       assert {:ok, project} = Rewrite.update(project, a.path, fn _ -> b end)
@@ -720,14 +714,14 @@ defmodule RewriteTest do
 
     test "returns an error when source not in project" do
       project = Rewrite.new()
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
 
       assert Rewrite.update(project, a.path, a) ==
                {:error, %Error{reason: :nosource, path: a.path}}
     end
 
     test "returns an error when path is nil" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       b = Source.from_string(":b")
       {:ok, project} = Rewrite.from_sources([a])
 
@@ -736,9 +730,9 @@ defmodule RewriteTest do
     end
 
     test "returns an error when another source would be overwritten" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
-      c = Source.from_string(":c", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
+      c = Source.from_string(":c", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a, b])
 
       assert Rewrite.update(project, a.path, c) ==
@@ -746,7 +740,7 @@ defmodule RewriteTest do
     end
 
     test "raises an error when function does not returns a source" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       {:ok, project} = Rewrite.from_sources([a])
       message = "expected %Source{} from anonymous function given to Rewrite.update/3, got: nil"
 
@@ -758,8 +752,8 @@ defmodule RewriteTest do
 
   describe "update!/3" do
     test "updates a source" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a])
 
       assert project = Rewrite.update!(project, a.path, b)
@@ -768,8 +762,8 @@ defmodule RewriteTest do
     end
 
     test "updates a source with a function" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a])
 
       assert project = Rewrite.update!(project, a.path, fn _ -> b end)
@@ -779,7 +773,7 @@ defmodule RewriteTest do
 
     test "returns an error when source not in project" do
       project = Rewrite.new()
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
 
       message = ~s'no source found for "a.exs"'
 
@@ -789,7 +783,7 @@ defmodule RewriteTest do
     end
 
     test "returns an error when path is nil" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       b = Source.from_string(":b")
       {:ok, project} = Rewrite.from_sources([a])
 
@@ -801,9 +795,9 @@ defmodule RewriteTest do
     end
 
     test "returns an error when another source would be overwritten" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
-      c = Source.from_string(":c", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
+      c = Source.from_string(":c", path: "b.exs")
       {:ok, project} = Rewrite.from_sources([a, b])
 
       message = ~s|can't update source "a.exs": updated source overwrites "b.exs"|
@@ -814,7 +808,7 @@ defmodule RewriteTest do
     end
 
     test "raises an error when function does not returns a source" do
-      a = Source.from_string(":a", "a.exs")
+      a = Source.from_string(":a", path: "a.exs")
       {:ok, project} = Rewrite.from_sources([a])
       message = "expected %Source{} from anonymous function given to Rewrite.update/3, got: nil"
 
@@ -839,8 +833,8 @@ defmodule RewriteTest do
     test "counts by the given type" do
       {:ok, project} =
         Rewrite.from_sources([
-          Source.from_string(":a", "a.ex"),
-          Source.from_string(":b", "b.exs")
+          Source.from_string(":a", path: "a.ex"),
+          Source.from_string(":b", path: "b.exs")
         ])
 
       assert Rewrite.count(project, ".ex") == 1
@@ -852,9 +846,9 @@ defmodule RewriteTest do
     test "returns all sources" do
       {:ok, project} =
         Rewrite.from_sources([
-          Source.from_string(":c", "c.exs"),
-          Source.from_string(":a", "a.exs"),
-          Source.from_string(":b", "b.exs")
+          Source.from_string(":c", path: "c.exs"),
+          Source.from_string(":a", path: "a.exs"),
+          Source.from_string(":b", path: "b.exs")
         ])
 
       assert project
@@ -940,7 +934,7 @@ defmodule RewriteTest do
 
       {:ok, project} =
         Rewrite.from_sources([
-          ":foo" |> Source.from_string(path) |> Source.update(Test, :content, ":test")
+          ":foo" |> Source.from_string(path: path) |> Source.update(Test, :content, ":test")
         ])
 
       assert {:ok, project} = Rewrite.write_all(project)
@@ -1043,9 +1037,9 @@ defmodule RewriteTest do
     test "returns false" do
       {:ok, project} =
         Rewrite.from_sources([
-          Source.from_string(":a", "a.exs"),
-          Source.from_string(":b", "b.exs"),
-          Source.from_string(":c", "c.exs")
+          Source.from_string(":a", path: "a.exs"),
+          Source.from_string(":b", path: "b.exs"),
+          Source.from_string(":c", path: "c.exs")
         ])
 
       assert Rewrite.issues?(project) == false
@@ -1054,9 +1048,9 @@ defmodule RewriteTest do
     test "returns true" do
       {:ok, project} =
         Rewrite.from_sources([
-          Source.from_string(":a", "a.exs"),
-          Source.from_string(":b", "b.exs"),
-          ":c" |> Source.from_string("c.exs") |> Source.add_issue(%{foo: 42})
+          Source.from_string(":a", path: "a.exs"),
+          Source.from_string(":b", path: "b.exs"),
+          ":c" |> Source.from_string(path: "c.exs") |> Source.add_issue(%{foo: 42})
         ])
 
       assert Rewrite.issues?(project) == true
@@ -1067,18 +1061,18 @@ defmodule RewriteTest do
     test "count/1" do
       {:ok, project} =
         Rewrite.from_sources([
-          Source.from_string(":a", "a.exs"),
-          Source.from_string(":b", "b.exs"),
-          Source.from_string(":c", "c.exs")
+          Source.from_string(":a", path: "a.exs"),
+          Source.from_string(":b", path: "b.exs"),
+          Source.from_string(":c", path: "c.exs")
         ])
 
       assert Enum.count(project) == 3
     end
 
     test "slice/3" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
-      c = Source.from_string(":c", "c.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
+      c = Source.from_string(":c", path: "c.exs")
       {:ok, project} = Rewrite.from_sources([a, b, c])
 
       assert project |> Enum.slice(1, 2) |> Enum.map(fn source -> source.path end) ==
@@ -1099,8 +1093,8 @@ defmodule RewriteTest do
     end
 
     test "member?/1 returns false" do
-      a = Source.from_string(":a", "a.exs")
-      b = Source.from_string(":b", "b.exs")
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
 
       {:ok, project} = Rewrite.from_sources([a])
 
@@ -1258,9 +1252,9 @@ defmodule RewriteTest do
         "**/*"
         |> Rewrite.new!(hooks: [InspectHook])
         |> Rewrite.new_source!("foo.ex", "foo")
-        |> Rewrite.put!(Source.from_string("bar", "bar.ex"))
+        |> Rewrite.put!(Source.from_string("bar", path: "bar.ex"))
         |> Rewrite.update!("foo.ex", fn source -> Source.update(source, :content, "foofoo") end)
-        |> Rewrite.update!("bar.ex", Source.from_string("barbar", "bar.ex"))
+        |> Rewrite.update!("bar.ex", Source.from_string("barbar", path: "bar.ex"))
 
         assert File.read!("inspect.txt") == """
                :new - #Rewrite<0 source(s)>
@@ -1275,7 +1269,7 @@ defmodule RewriteTest do
 
     test "are called by from_sources", context do
       in_tmp context do
-        source = Source.from_string("foo", "foo.ex")
+        source = Source.from_string("foo", path: "foo.ex")
         Rewrite.from_sources([source], hooks: [InspectHook])
 
         assert File.read!("inspect.txt") == """

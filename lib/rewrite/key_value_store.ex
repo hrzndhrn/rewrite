@@ -23,6 +23,7 @@ defmodule Rewrite.KeyValueStore do
 
   def get(id, key, default) when is_integer(id) do
     Agent.get(__MODULE__, fn state ->
+      # TODO: Map.get(state, {id, key}, default)
       get_value(state, {id, key}, default)
     end)
   end
@@ -35,6 +36,7 @@ defmodule Rewrite.KeyValueStore do
 
   def get_and_update(id, key, value, default) when is_integer(id) do
     Agent.get_and_update(__MODULE__, fn state ->
+      # TODO: result = Map.get(state, {id, key}, default)
       result = get_value(state, {id, key}, default)
       state = Map.put(state, {id, key}, value)
 
@@ -42,6 +44,7 @@ defmodule Rewrite.KeyValueStore do
     end)
   end
 
+  # TODO: remove
   defp get_value(map, key, default) do
     case Map.fetch(map, key) do
       :error -> default

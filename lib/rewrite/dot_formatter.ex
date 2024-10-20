@@ -279,7 +279,7 @@ defmodule Rewrite.DotFormatter do
           timestamp: timestamp
         )
 
-      {:ok, struct!(__MODULE__, data)}
+      {:ok, struct!(DotFormatter, data)}
     end
   end
 
@@ -362,6 +362,31 @@ defmodule Rewrite.DotFormatter do
       true ->
         {:ok, term}
     end
+  end
+
+  @doc """
+  Creates a `%DotFormatter{}` struct from a the given `formatter_opts`.
+
+  This function ignores the sub-formatters of the given `formatter_opts`. It is
+  also assumes that the plugins are already loaded.
+  """
+  @spec from_formatter_opts(keyword(), keyword()) :: t()
+  def from_formatter_opts(formatter_opts, opts \\ []) do
+    {formatter_opts, plugin_opts} = Keyword.split(formatter_opts, @formatter_opts)
+
+    data =
+      formatter_opts
+      |> Keyword.put(:plugin_opts, plugin_opts)
+      |> Keyword.put_new(:plugins, [])
+
+    opts = Keyword.put(opts, :reload_plugins, false)
+
+    {:ok, dot_formatter} =
+      DotFormatter
+      |> struct!(data)
+      |> update_plugins(opts)
+
+    dot_formatter
   end
 
   @doc """
@@ -590,8 +615,7 @@ defmodule Rewrite.DotFormatter do
   Formats the given `string` using the specified `dot_formatter`, `file`, and
   `options`.
 
-  The `file` is used to determine the formatter. If no formatter is found, an
-  error tuple is returned.
+  The `file` is used to determine the formatter. 
 
   Returns an :ok tuple with the formatted string on success, or an error tuple 
   on failure.

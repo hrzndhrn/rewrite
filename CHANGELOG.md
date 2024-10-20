@@ -2,7 +2,26 @@
 
 ## 1.0.0 - dev
 
-### Enhancements
+### Breaking changes
+
+Version `1.0.0` comes with a lot of breaking changes and some improvements. 
+The main change is to the formatting and handling of `.formatter.exs`. For this 
+the module `Rewrite.DotFormatter` has been added. This module provides an API to 
+the Elixir formatting functionality and the formatter configuration via
+`.formatter.exs`.
+
+Other changes concern the argument list of some functions, here some arguments
+have been removed from the argument list and moved to the options.
+
++ `Rewrite.TextDiff` has been moved to its own package
+  (hex: [text_diff](https://hex.pm/packages/text_diff)). 
+
++ Add `Rewrite.DotFormatter` to handle the formatting of sources and files.
+
++ The functions `Rewrite.Source.Ex.format/2`, 
+  `Rewrite.Source.Ex.put_formatter_opts/2` and 
+  `Rewrite.Source.Ex.merge_formatter_opts/2` are removed. 
+  The formatting functionality has been moved to `Rewrite.DotFormatter`.
 
 + Add `Rewrite.create_source/4` to create a `Source` struct without adding it
   to the `Rewrite` project.
@@ -13,8 +32,6 @@
 + The `Rewrite.Source.update/4` function accepts now an updater function or a
   value.
 
-+ Add `Rewrite.DotFormatter` to handle the formatting of sources and files.
-
 + Add `Rewrite.dot_formatter/1/2` to set and get formatters.
 
 + Add `Rewrite.format/2` and `Rewrite.fromat!/2` to format a project.
@@ -23,18 +40,15 @@
 
 + Add `Rewrite.Hook`, a behaviour to set as `:hooks` in a `%Rewrite{}` project.
 
-### Breaking changes
++ Add `Rewrite.Source.default_path/0` and callback 
+  `Rewrite.Filetype.default_path/0`.
 
 + `Rewrite.new/1`, `Rewrite.new!/2` and `Rewrite.read!/3` are now expecting now
   an optional options list instead of a list of `Rewrite.Filetype`s.
 
-+ `Rewrite.TextDiff` has been moved to its own package
-  (hex: [text_diff](https://hex.pm/packages/text_diff)). 
-
-+ The functions `Rewrite.Source.Ex.format/2`, 
-  `Rewrite.Source.Ex.put_formatter_opts/2` and 
-  `Rewrite.Source.Ex.merge_formatter_opts/2` are removed. 
-  The formatting functionality has been moved to `Rewrite.DotFormatter`.
++ The function `Rewrite.Source.form_string/3` and the callback 
+  `Rewrite.Filetype.from_string/3` are changed to `from_string/2`. The argument
+  `path` is now part of the options.
 
 ## 0.10.5 - 2024/06/15
 

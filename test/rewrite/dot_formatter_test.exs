@@ -3042,4 +3042,56 @@ defmodule Rewrite.DotFormatterTest do
       end
     end
   end
+
+  describe "from_formatter_opts/2" do
+    test "create %DotFormatter{}" do
+      formatter_opts = [
+        extension: ".ex",
+        file: "/Users/foo/Projects/bar/lib/source.ex",
+        sigils: [],
+        plugins: [FormatterPlugin],
+        trailing_comma: true,
+        inputs: ["{mix,.formatter}.exs", "{config,lib,test}/**/*.{ex,exs}"],
+        locals_without_parens: [noop: 1],
+        subdirectories: ["priv/*/migrations"]
+      ]
+
+      assert dot_formatter = DotFormatter.from_formatter_opts(formatter_opts)
+      assert dot_formatter.plugins == [FormatterPlugin]
+      assert dot_formatter.subs == []
+    end
+
+    test "removes plugins" do
+      formatter_opts = [
+        extension: ".ex",
+        file: "/Users/foo/Projects/bar/lib/source.ex",
+        sigils: [],
+        plugins: [FormatterA, FormatterB, FormatterC],
+        trailing_comma: true,
+        inputs: ["{mix,.formatter}.exs", "{config,lib,test}/**/*.{ex,exs}"],
+        locals_without_parens: [noop: 1],
+        subdirectories: ["priv/*/migrations"]
+      ]
+
+      assert dot_formatter =
+               DotFormatter.from_formatter_opts(formatter_opts,
+                 remove_plugins: [FormatterA, FormatterC]
+               )
+
+      assert dot_formatter.plugins == [FormatterB]
+    end
+
+    test "returns a %DotFormatter{} that works with format_string!/4" do
+      formatter_opts = [
+        extension: ".ex",
+        file: "/Users/foo/Projects/bar/lib/source.ex",
+        locals_without_parens: [foo: 1]
+      ]
+
+      assert dot_formatter = DotFormatter.from_formatter_opts(formatter_opts)
+
+      assert DotFormatter.format_string!(dot_formatter, "source.ex", "foo bar baz") ==
+               "foo bar(baz)\n"
+    end
+  end
 end
