@@ -1211,7 +1211,7 @@ defmodule RewriteTest do
     end
   end
 
-  describe "fromat!/2" do
+  describe "format!/2" do
     @describetag :tmp_dir
 
     test "raises an error", context do
