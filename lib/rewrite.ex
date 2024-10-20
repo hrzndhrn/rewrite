@@ -614,7 +614,7 @@ defmodule Rewrite do
   The same as `update_source/5` but raises a `Rewrite.Error` exception in case
   of an error.
   """
-  @spec update_source(t(), by(), Path.t(), key(), updater()) :: t()
+  @spec update_source!(t(), by(), Path.t(), key(), updater()) :: t()
   def update_source!(%Rewrite{} = rewrite, by \\ Rewrite, path, key, fun) do
     case update_source(rewrite, by, path, key, fun) do
       {:ok, rewrite} -> rewrite
