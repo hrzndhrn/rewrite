@@ -673,7 +673,7 @@ defmodule Rewrite.DotFormatter do
   Same as `format_string/2`, but raises a `Rewrite.DotFormatterError` exception
   in case of failure.
   """
-  @spec format_string(String.t(), keyword()) :: String.t()
+  @spec format_string!(String.t(), keyword()) :: String.t()
   def format_string!(string, opts \\ []) do
     case format_string(string, opts) do
       {:ok, formatted} -> formatted
@@ -745,7 +745,7 @@ defmodule Rewrite.DotFormatter do
   Same as `format_quoted/2`, but raises a `Rewrite.DotFormatterError` exception
   in case of failure.
   """
-  @spec format_quoted(String.t(), keyword()) :: String.t()
+  @spec format_quoted!(String.t(), keyword()) :: String.t()
   def format_quoted!(string, opts \\ []) do
     case format_quoted(string, opts) do
       {:ok, formatted} -> formatted
