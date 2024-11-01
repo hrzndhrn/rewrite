@@ -33,7 +33,7 @@ defmodule Rewrite.DotFormatter do
         }
 
   @root "."
-  @defaul_dot_formatter ".formatter.exs"
+  @default_dot_formatter ".formatter.exs"
 
   @formatter_opts [
     :force_do_end_blocks,
@@ -140,7 +140,7 @@ defmodule Rewrite.DotFormatter do
   def create(rewrite \\ nil, opts) do
     config = opts
     opts = [reload_plugins: false]
-    dot_formatter_path = @defaul_dot_formatter
+    dot_formatter_path = @default_dot_formatter
     path = @root
     timestamp = DateTime.utc_now() |> DateTime.to_unix()
 
@@ -242,11 +242,11 @@ defmodule Rewrite.DotFormatter do
   defp reload_plugins(dot_formatter, _old_dot_formatter), do: load_plugins(dot_formatter)
 
   defp dot_formatter_path(@root, opts) do
-    Keyword.get(opts, :dot_formatter, @defaul_dot_formatter)
+    Keyword.get(opts, :dot_formatter, @default_dot_formatter)
   end
 
   defp dot_formatter_path(path, _opts) do
-    Path.join(path, @defaul_dot_formatter)
+    Path.join(path, @default_dot_formatter)
   end
 
   @doc """
@@ -1182,7 +1182,7 @@ defmodule Rewrite.DotFormatter do
   defp do_eval_subs(project, opts, dirs, subdirectory) do
     result =
       Enum.reduce_while(dirs, [], fn dir, acc ->
-        if dir |> Path.join(@defaul_dot_formatter) |> File.regular?() do
+        if dir |> Path.join(@default_dot_formatter) |> File.regular?() do
           case read(project, opts, dir) do
             {:ok, dot_formatter} -> {:cont, [dot_formatter | acc]}
             error -> {:halt, error}
@@ -1297,7 +1297,7 @@ defmodule Rewrite.DotFormatter do
       Enum.reduce_while(deps, [], fn dep, acc ->
         case Map.fetch(paths, dep) do
           :error -> {:halt, %DotFormatterError{reason: {:dep_not_found, dep}}}
-          {:ok, path} -> {:cont, [{dep, Path.join(path, @defaul_dot_formatter)} | acc]}
+          {:ok, path} -> {:cont, [{dep, Path.join(path, @default_dot_formatter)} | acc]}
         end
       end)
 
