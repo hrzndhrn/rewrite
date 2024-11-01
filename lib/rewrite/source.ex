@@ -961,7 +961,6 @@ defmodule Rewrite.Source do
   def default_path(%Source{filetype: %module{}}), do: module.default_path()
   def default_path(_source), do: "nofile"
 
-
   defp update_history(%Source{history: history} = source, key, by, legacy) do
     %{source | history: [{key, by, legacy} | history]}
   end
