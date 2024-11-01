@@ -181,7 +181,9 @@ defmodule Rewrite.Source do
 
   """
   @spec from_string(String.t(), opts()) :: t()
-  def from_string(content, opts \\ []) when is_list(opts) do
+  def from_string(content, opts \\ [])
+
+  def from_string(content, opts) when is_list(opts) do
     new(
       content: content,
       path: Keyword.get(opts, :path),
@@ -190,6 +192,11 @@ defmodule Rewrite.Source do
       timestamp: now(),
       dot_formatter: Keyword.get(opts, :dot_formatter)
     )
+  end
+
+  # @deprecated "Use the from_string functions with `opts` instead."
+  def from_string(content, path) when is_binary(path) do
+    from_string(content, path: path)
   end
 
   @doc ~S"""
@@ -509,6 +516,11 @@ defmodule Rewrite.Source do
     end
   end
 
+  # @deprecated "Use the update functions with `opts` instead."
+  def update(source, by, key, content) do
+    update(source, key, content, by: by)
+  end
+
   defp value(updater, legacy) when is_function(updater, 1), do: updater.(legacy)
   defp value(value, _legacy), do: value
 
@@ -808,8 +820,10 @@ defmodule Rewrite.Source do
   @doc """
   Calculates the current hash from the given `source`.
   """
-  @spec hash(t()) :: binary()
+  @spec hash(t()) :: non_neg_integer()
   def hash(%Source{path: path, content: content}), do: hash(path, content)
+
+  defp hash(path, code), do: :erlang.phash2({path, code})
 
   @doc """
   Sets the `filetype` for the `source`.
@@ -947,7 +961,6 @@ defmodule Rewrite.Source do
   def default_path(%Source{filetype: %module{}}), do: module.default_path()
   def default_path(_source), do: "nofile"
 
-  defp hash(path, code), do: :erlang.phash2({path, code})
 
   defp update_history(%Source{history: history} = source, key, by, legacy) do
     %{source | history: [{key, by, legacy} | history]}

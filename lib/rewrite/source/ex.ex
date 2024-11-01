@@ -108,10 +108,17 @@ defmodule Rewrite.Source.Ex do
   Returns a `%Rewrite.Source{}` with an added `:filetype`.
   """
   @impl Rewrite.Filetype
-  def from_string(string, opts \\ []) do
+  def from_string(string, opts \\ [])
+
+  def from_string(string, opts) when is_list(opts) do
     string
     |> Source.from_string(opts)
     |> add_filetype(opts)
+  end
+
+  # @deprecated: use from_string/2 with opts as second argument
+  def from_string(string, path) when is_binary(path) do
+    from_string(string, path: path)
   end
 
   @doc """
@@ -267,5 +274,21 @@ defmodule Rewrite.Source.Ex do
     def inspect(_source, _opts) do
       "#Rewrite.Source.Ex<.ex,.exs>"
     end
+  end
+
+  @deprecated "Use the fromatting functionlity provided by Rewrite.DotFormatter instead."
+  def put_formatter_opts(source, _opts), do: source
+
+  @deprecated "Use the fromatting functionlity provided by Rewrite.DotFormatter instead."
+  def format(source, _formatter_opts \\ nil) do
+    dot_formatter =
+      case DotFormatter.read() do
+        {:ok, dot_formatter} -> dot_formatter
+        {:error, _error} -> DotFormatter.default()
+      end
+
+    source
+    |> Source.format!(dot_formatter: dot_formatter)
+    |> Source.get(:content)
   end
 end
