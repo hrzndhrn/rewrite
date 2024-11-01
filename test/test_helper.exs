@@ -1,3 +1,5 @@
-Code.compile_file("test/support/fake_formatter.ex")
+"test/support/**/*.ex"
+|> Path.wildcard()
+|> Enum.each(&Code.compile_file/1)
 
 ExUnit.start()

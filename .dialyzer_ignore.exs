@@ -1,3 +1,3 @@
 [
-  ~r|lib/rewrite/source/ex.ex:.*:unknown_function|
+  ~r|lib/rewrite/dot_formatter.ex:.*:pattern_match|
 ]

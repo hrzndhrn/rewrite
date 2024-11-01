@@ -1,6 +1,7 @@
 defmodule Rewrite.SourceTest do
   use ExUnit.Case
 
+  alias Rewrite.DotFormatter
   alias Rewrite.Source
   alias Rewrite.SourceError
   alias Rewrite.SourceKeyError
@@ -10,34 +11,40 @@ defmodule Rewrite.SourceTest do
   describe "read/1" do
     test "creates new source" do
       path = "test/fixtures/source/hello.txt"
+      mtime = File.stat!(path, time: :posix).mtime
+      hash = hash(path)
 
-      assert %Source{
+      assert Source.read!(path) == %Source{
                from: :file,
                owner: Rewrite,
-               path: ^path,
+               path: path,
                content: "hello\n",
                filetype: nil,
-               hash: _hash,
+               hash: hash,
                issues: [],
                private: %{},
+               timestamp: mtime,
                history: []
-             } = Source.read!(path)
+             }
     end
 
     test "creates new source from full path" do
       path = Path.join(File.cwd!(), "test/fixtures/source/hello.txt")
+      mtime = File.stat!(path, time: :posix).mtime
+      hash = hash(path)
 
-      assert %Source{
+      assert Source.read!(path) == %Source{
                from: :file,
                owner: Rewrite,
-               path: ^path,
+               path: path,
                content: "hello\n",
                filetype: nil,
-               hash: _hash,
+               hash: hash,
                issues: [],
                private: %{},
+               timestamp: mtime,
                history: []
-             } = Source.read!(path)
+             }
     end
   end
 
@@ -180,7 +187,7 @@ defmodule Rewrite.SourceTest do
 
     test "raises an exception when old file can't be removed", %{tmp_dir: tmp_dir} do
       File.cd!(tmp_dir, fn ->
-        source = "a" |> Source.from_string("a.txt") |> Source.update(:path, "b.txt")
+        source = "a" |> Source.from_string(path: "a.txt") |> Source.update(:path, "b.txt")
 
         message = ~s'could not write to file "a.txt": no such file or directory'
 
@@ -211,7 +218,7 @@ defmodule Rewrite.SourceTest do
   describe "update/4" do
     test "does not update source when code not changed" do
       source = Source.read!("test/fixtures/source/hello.txt")
-      updated = Source.update(source, Test, :content, source.content)
+      updated = Source.update(source, :content, source.content, by: Test)
 
       assert Source.updated?(updated) == false
     end
@@ -224,10 +231,11 @@ defmodule Rewrite.SourceTest do
       source =
         path
         |> Source.read!()
-        |> Source.update(Tester, :content, new)
+        |> Source.update(:content, new, by: Tester)
 
       assert source.history == [{:content, Tester, txt}]
       assert source.content == new
+      assert updated_timestamp?(source)
     end
 
     test "updates the path" do
@@ -241,26 +249,30 @@ defmodule Rewrite.SourceTest do
 
       assert source.history == [{:path, Rewrite, path}]
       assert source.path == new
+      assert updated_timestamp?(source)
     end
 
     test "updates with filetype value" do
-      source = Source.Ex.from_string(":a", "test/a.ex")
+      source = ":a" |> Source.Ex.from_string(path: "test/a.ex") |> Source.touch(now(-10))
       quoted = Sourceror.parse_string!(":b")
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
       assert Source.get(source, :content) == ":b\n"
       assert Source.updated?(source) == true
+      assert updated_timestamp?(source)
     end
 
     test "does not update with filetype value without any changes" do
-      source = Source.Ex.from_string(":a", "test/a.ex")
+      timestamp = now(-10)
+      source = ":a" |> Source.Ex.from_string(path: "test/a.ex") |> Source.touch(timestamp)
       quoted = Sourceror.parse_string!(":a")
 
       assert source = Source.update(source, :quoted, quoted)
       assert source.filetype != nil
       assert Source.get(source, :content) == ":a"
       assert Source.updated?(source) == false
+      assert source.timestamp == timestamp
     end
   end
 
@@ -447,5 +459,82 @@ defmodule Rewrite.SourceTest do
 
       assert Source.issues(source) == [:bar, :foo]
     end
+  end
+
+  describe "format/2" do
+    test "formats a source" do
+      source = Source.Ex.from_string("foo  bar   baz")
+      assert {:ok, source} = Source.format(source)
+      assert source.content == "foo(bar(baz))\n"
+      assert source.owner == Rewrite
+      assert source.history == [{:content, Rewrite, "foo  bar   baz"}]
+    end
+
+    test "does not updates source when not needed" do
+      source = Source.Ex.from_string(":foo\n")
+      assert {:ok, source} = Source.format(source)
+      assert source.content == ":foo\n"
+      assert source.history == []
+    end
+
+    test "formats a source with owner and by" do
+      source = Source.Ex.from_string("foo  bar   baz", owner: Walter)
+      assert {:ok, source} = Source.format(source, by: Felix)
+      assert source.content == "foo(bar(baz))\n"
+      assert source.owner == Walter
+      assert source.history == [{:content, Felix, "foo  bar   baz"}]
+    end
+
+    test "returns an error" do
+      source = Source.from_string("x =", path: "no.ex")
+      assert {:error, _error} = Source.format(source)
+    end
+
+    test "formats a source with source.dot_formatter" do
+      dot_formatter = DotFormatter.from_formatter_opts(locals_without_parens: [foo: 1])
+      source = Source.Ex.from_string("foo  bar   baz")
+      assert {:ok, source} = Source.format(source, dot_formatter: dot_formatter)
+      assert source.content == "foo bar(baz)\n"
+    end
+  end
+
+  describe "format!/2" do
+    test "formats a source" do
+      source = Source.Ex.from_string("foo  bar   baz")
+      assert source = Source.format!(source)
+      assert source.content == "foo(bar(baz))\n"
+    end
+
+    test "raises an exception" do
+      source = Source.from_string("x =", path: "no.ex")
+
+      assert_raise TokenMissingError, fn ->
+        Source.format!(source)
+      end
+    end
+  end
+
+  test "inspect" do
+    source = Source.from_string("test", path: "foo.ex")
+    assert inspect(source) == "#Rewrite.Source<foo.ex>"
+  end
+
+  defp hash(path) do
+    content = File.read!(path)
+    :erlang.phash2({path, content})
+  end
+
+  defp now(diff \\ 0) do
+    now = DateTime.utc_now() |> DateTime.to_unix()
+    now + diff
+  end
+
+  defp updated_timestamp?(source) do
+    if File.regular?(source.path) do
+      mtime = File.stat!(source.path, time: :posix).mtime
+      assert mtime < source.timestamp
+    end
+
+    assert_in_delta source.timestamp, now(), 1
   end
 end
