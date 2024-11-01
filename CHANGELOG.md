@@ -43,8 +43,8 @@ have been removed from the argument list and moved to the options.
 + Add `Rewrite.Source.default_path/0` and callback 
   `Rewrite.Filetype.default_path/0`.
 
-+ `Rewrite.new/1`, `Rewrite.new!/2` and `Rewrite.read!/3` are now expecting now
-  an optional options list instead of a list of `Rewrite.Filetype`s.
++ `Rewrite.new/1`, `Rewrite.new!/2` and `Rewrite.read!/3` now expect an optional
+  options list instead of a list of `Rewrite.Filetype`s.
 
 + The function `Rewrite.Source.form_string/3` and the callback 
   `Rewrite.Filetype.from_string/3` are changed to `from_string/2`. The argument
