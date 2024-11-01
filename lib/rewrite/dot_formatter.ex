@@ -3,7 +3,7 @@ defmodule Rewrite.DotFormatter do
   Provides an alternative API to the Elixir dot formatter.
 
   The `DotFormatter` has the same functionality as the code that provides the 
-  `mix format` task. But `DotFormatter` provides a struct for the evaluted 
+  `mix format` task. But `DotFormatter` provides a struct for the evaluated 
   formatter config to provide a more convenient API.
   """
 
