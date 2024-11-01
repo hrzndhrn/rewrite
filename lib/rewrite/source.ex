@@ -969,7 +969,7 @@ defmodule Rewrite.Source do
 
   defp eof_newline(string), do: String.trim_trailing(string) <> "\n"
 
-  defp now, do: DateTime.utc_now() |> DateTime.to_unix()
+  defp now, do: :os.system_time(:second)
 
   defimpl Inspect do
     def inspect(source, _opts) do
