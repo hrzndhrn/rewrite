@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0 - 2024/11/03
+
++ Set `locals_for_parens` to `[]` for `Sourceror.to_string/2` if not set, to 
+  prevent Sourceror from trying to fetch `locals_for_parens`.
+
 ## 1.0.0 - 2024/11/01
 
 ### Breaking changes

@@ -134,15 +134,16 @@ defmodule Rewrite.Source.ExTest do
         )
 
         rewrite = Rewrite.new!("**/*", dot_formatter: DotFormatter.read!())
+        dot_formatter = Rewrite.dot_formatter(rewrite)
 
         assert read!(rewrite, "a.ex") == "foo bar baz\n"
 
         source = Rewrite.source!(rewrite, "a.ex")
-        source = Source.update(source, :content, "foo bar baz")
+        source = Source.update(source, :content, "foo bar baz", dot_formatter: dot_formatter)
         assert Source.get(source, :content) == "foo bar baz"
 
         quoted = Sourceror.parse_string!("foo baz bar")
-        source = Source.update(source, :quoted, quoted)
+        source = Source.update(source, :quoted, quoted, dot_formatter: dot_formatter)
         assert Source.get(source, :content) == "foo baz(bar)\n"
       end
     end

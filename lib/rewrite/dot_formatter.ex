@@ -1054,6 +1054,10 @@ defmodule Rewrite.DotFormatter do
           {formatter_opts, [plugin | plugins]}
         end
 
+      # If not set, explicitly set locals_without_parens to [] to prevent 
+      # Sourceror from trying to fetch locals_without_parens.
+      formatter_opts = Keyword.put_new(formatter_opts, :locals_without_parens, [])
+
       input = Sourceror.to_string(input, formatter_opts) <> "\n"
 
       Enum.reduce(plugins, input, fn plugin, input ->
@@ -1074,6 +1078,11 @@ defmodule Rewrite.DotFormatter do
   defp elixir_formatter(:quoted, formatter_opts) do
     fn input ->
       formatter_opts = Keyword.put(formatter_opts, :quoted_to_algebra, &Code.quoted_to_algebra/2)
+
+      # If not set, explicitly set locals_without_parens to [] to prevent 
+      # Sourceror from trying to fetch locals_without_parens.
+      formatter_opts = Keyword.put_new(formatter_opts, :locals_without_parens, [])
+
       Sourceror.to_string(input, formatter_opts) <> "\n"
     end
   end
