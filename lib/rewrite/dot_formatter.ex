@@ -91,6 +91,9 @@ defmodule Rewrite.DotFormatter do
 
     * `replace_plugins` - a list of `{old, new}` tuples to replace plugins in
       the formatter.
+
+    * `ignore_unknown_deps` - ingores unknown dependencies in `:import_deps` 
+      when set to `true`. Defaults to `false`.
   """
   @spec read(rewrite :: Rewrite.t() | keyword() | nil, keyword()) ::
           {:ok, t()} | {:error, DotFormatterError.t()}
@@ -112,7 +115,7 @@ defmodule Rewrite.DotFormatter do
   defp eval(rewrite, opts, path, dot_formatter_path, term, timestamp) do
     with {:ok, term} <- validate(term, dot_formatter_path, path),
          {:ok, dot_formatter} <- new(term, dot_formatter_path, timestamp),
-         {:ok, dot_formatter} <- eval_deps(dot_formatter),
+         {:ok, dot_formatter} <- eval_deps(dot_formatter, opts),
          {:ok, dot_formatter} <- eval_subs(dot_formatter, rewrite, opts),
          {:ok, dot_formatter} <- update_plugins(dot_formatter, opts) do
       load_plugins(dot_formatter)
@@ -1054,7 +1057,7 @@ defmodule Rewrite.DotFormatter do
           {formatter_opts, [plugin | plugins]}
         end
 
-      # If not set, explicitly set locals_without_parens to [] to prevent 
+      # If not set, explicitly set locals_without_parens to [] to prevent
       # Sourceror from trying to fetch locals_without_parens.
       formatter_opts = Keyword.put_new(formatter_opts, :locals_without_parens, [])
 
@@ -1079,7 +1082,7 @@ defmodule Rewrite.DotFormatter do
     fn input ->
       formatter_opts = Keyword.put(formatter_opts, :quoted_to_algebra, &Code.quoted_to_algebra/2)
 
-      # If not set, explicitly set locals_without_parens to [] to prevent 
+      # If not set, explicitly set locals_without_parens to [] to prevent
       # Sourceror from trying to fetch locals_without_parens.
       formatter_opts = Keyword.put_new(formatter_opts, :locals_without_parens, [])
 
@@ -1128,10 +1131,10 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp eval_deps(%{import_deps: nil} = dot_formatter), do: {:ok, dot_formatter}
+  defp eval_deps(%{import_deps: nil} = dot_formatter, _opts), do: {:ok, dot_formatter}
 
-  defp eval_deps(%{import_deps: deps} = dot_formatter) do
-    with {:ok, deps_paths} <- deps_paths(deps),
+  defp eval_deps(%{import_deps: deps} = dot_formatter, opts) do
+    with {:ok, deps_paths} <- deps_paths(deps, opts),
          {:ok, locals_without_parens} <- locals_without_parens(deps_paths) do
       dot_formatter =
         Map.update!(dot_formatter, :locals_without_parens, fn list ->
@@ -1299,14 +1302,21 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp deps_paths(deps) do
+  defp deps_paths(deps, opts) do
     paths = Mix.Project.deps_paths()
+    ignore_unknown_deps = Keyword.get(opts, :ignore_unknown_deps, false)
 
     result =
       Enum.reduce_while(deps, [], fn dep, acc ->
         case Map.fetch(paths, dep) do
-          :error -> {:halt, %DotFormatterError{reason: {:dep_not_found, dep}}}
-          {:ok, path} -> {:cont, [{dep, Path.join(path, @default_dot_formatter)} | acc]}
+          {:ok, path} ->
+            {:cont, [{dep, Path.join(path, @default_dot_formatter)} | acc]}
+
+          :error when ignore_unknown_deps ->
+            {:cont, acc}
+
+          :error ->
+            {:halt, %DotFormatterError{reason: {:dep_not_found, dep}}}
         end
       end)
 
