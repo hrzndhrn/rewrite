@@ -1308,11 +1308,15 @@ defmodule Rewrite.DotFormatter do
 
     result =
       Enum.reduce_while(deps, [], fn dep, acc ->
-        with {:ok, path} <- Map.fetch(paths, dep) do
-          {:cont, [{dep, Path.join(path, @default_dot_formatter)} | acc]}
-        else
-          :error when ignore_unknown_deps -> {:cont, acc}
-          :error -> {:halt, %DotFormatterError{reason: {:dep_not_found, dep}}}
+        case Map.fetch(paths, dep) do
+          {:ok, path} ->
+            {:cont, [{dep, Path.join(path, @default_dot_formatter)} | acc]}
+
+          :error when ignore_unknown_deps ->
+            {:cont, acc}
+
+          :error ->
+            {:halt, %DotFormatterError{reason: {:dep_not_found, dep}}}
         end
       end)
 
