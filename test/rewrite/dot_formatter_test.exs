@@ -2475,29 +2475,8 @@ defmodule Rewrite.DotFormatterTest do
       end
     end
 
-    @tag :project
     test "validates dependencies in :import_deps", context do
       in_tmp context do
-        write!(
-          ".formatter.exs": """
-          [import_deps: [:my_dep]]
-          """
-        )
-
-        assert {:error,
-                %Rewrite.DotFormatterError{
-                  reason: {:dep_not_found, :my_dep},
-                  path: "deps/my_dep/.formatter.exs"
-                } = error} = DotFormatter.read()
-
-        message = """
-        Unknown dependency :my_dep given to :import_deps in the formatter \
-        configuration. Make sure the dependency is listed in your mix.exs for \
-        environment :dev and you have run "mix deps.get"\
-        """
-
-        assert Exception.message(error) == message
-
         write!(
           ".formatter.exs": """
           [import_deps: [:nonexistent_dep]]
@@ -2516,6 +2495,18 @@ defmodule Rewrite.DotFormatterTest do
         """
 
         assert Exception.message(error) == message
+      end
+    end
+
+    test "ignores unknown dependencies in :import_deps", context do
+      in_tmp context do
+        write!(
+          ".formatter.exs": """
+          [import_deps: [:nonexistent_dep]]
+          """
+        )
+
+        assert {:ok, _dot_formatter} = DotFormatter.read(ignore_unknown_deps: true)
       end
     end
 
