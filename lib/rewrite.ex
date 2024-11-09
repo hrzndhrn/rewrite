@@ -91,11 +91,18 @@ defmodule Rewrite do
   @doc """
   Creates a `%Rewrite{}` from the given `inputs`.
 
-  Accepts the same options as `new/1`.
+  ## Options
+
+    * Accepts the same options as `new/1`.
+
+    * 'exclude' - a list of paths and/or glob expressions to exclude sources 
+      from the project. The option also accepts a predicate function which is 
+      called for each source path.  The exclusion takes place before the file is 
+      read.
   """
   @spec new!(input() | [input()], opts) :: t()
   def new!(inputs, opts \\ []) do
-    opts |> new() |> read!(inputs)
+    opts |> new() |> read!(inputs, opts)
   end
 
   @doc """
@@ -107,11 +114,15 @@ defmodule Rewrite do
     * `:force`, default: `false` - forces the reading of sources. With
       `force: true` updates and issues for an already existing source are 
       deleted.
+
+    * 'exclude' - a list of paths and/or glob expressions to exclude sources 
+      from the project. The option also accepts a predicate function which is 
+      called for each source path.  The exclusion takes place before the file is 
+      read.
   """
   @spec read!(t(), input() | [input()], opts()) :: t()
   def read!(%Rewrite{} = rewrite, inputs, opts \\ []) do
-    force = Keyword.get(opts, :force, false)
-    reader = rewrite.sources |> Map.keys() |> reader(rewrite.extensions, force)
+    reader = rewrite.sources |> Map.keys() |> reader(rewrite.extensions, opts)
 
     inputs = expand(inputs)
 
@@ -134,11 +145,14 @@ defmodule Rewrite do
     |> handle_hooks({:added, added})
   end
 
-  defp reader(paths, extensions, force) do
+  defp reader(paths, extensions, opts) do
+    force = Keyword.get(opts, :force, false)
+    exclude? = opts |> Keyword.get(:exclude) |> exclude()
+
     fn path ->
       Logger.disable(self())
 
-      if File.dir?(path) || (!force && path in paths) do
+      if exclude?.(path) || File.dir?(path) || (!force && path in paths) do
         nil
       else
         source = read_source!(path, extensions)
@@ -146,6 +160,24 @@ defmodule Rewrite do
       end
     end
   end
+
+  defp exclude(nil) do
+    fn _path -> false end
+  end
+
+  defp exclude(list) when is_list(list) do
+    globs =
+      Enum.map(list, fn
+        %GlobEx{} = glob -> glob
+        path -> GlobEx.compile!(path)
+      end)
+
+    fn path ->
+      Enum.any?(globs, fn glob -> GlobEx.match?(glob, path) end)
+    end
+  end
+
+  defp exclude(fun) when is_function(fun, 1), do: fun
 
   defp read_source!(path, extensions) when not is_nil(path) do
     {source, opts} = extension_for_file(extensions, path)
