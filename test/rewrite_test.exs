@@ -1,11 +1,12 @@
 defmodule RewriteTest do
   use RewriteCase, async: false
 
-  alias Rewrite.Source
+  import GlobEx.Sigils
 
   alias Rewrite.DotFormatter
   alias Rewrite.DotFormatterError
   alias Rewrite.Error
+  alias Rewrite.Source
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
 
@@ -303,6 +304,33 @@ defmodule RewriteTest do
 
       assert_raise SyntaxError, fn ->
         Rewrite.new!(inputs)
+      end
+    end
+
+    @tag :tmp_dir
+    test "excludes files by path and glob", context do
+      in_tmp context do
+        File.write!("foo.ex", ":foo")
+        File.write!("bar.ex", ":bar")
+        File.write!("baz.ex", ":baz")
+
+        assert project = Rewrite.new!("**", exclude: ["foo.ex", ~g/baz*/])
+        assert project.sources |> Map.keys() == ["bar.ex"]
+        assert project.excluded == ["foo.ex", "baz.ex"]
+      end
+    end
+
+    @tag :tmp_dir
+    test "excludes file by function", context do
+      in_tmp context do
+        File.write!("foo.ex", ":foo")
+        File.write!("bar.ex", ":bar")
+
+        exclude? = fn path -> path == "foo.ex" end
+
+        assert project = Rewrite.new!("**", exclude: exclude?)
+        assert project.sources |> Map.keys() == ["bar.ex"]
+        assert project.excluded == ["foo.ex"]
       end
     end
   end

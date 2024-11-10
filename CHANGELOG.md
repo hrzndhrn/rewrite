@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0 - 2024/11/09
+
++ Added `:exclude` option to `Rewrite.new!/2` and `Rewrite.read!/2`.
+
 ## 1.0.1 - 2024/11/03
 
 + Set `locals_for_parens` to `[]` for `Sourceror.to_string/2` if not set, to 
