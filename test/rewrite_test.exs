@@ -316,6 +316,7 @@ defmodule RewriteTest do
 
         assert project = Rewrite.new!("**", exclude: ["foo.ex", ~g/baz*/])
         assert project.sources |> Map.keys() == ["bar.ex"]
+        assert project.excluded == ["foo.ex", "baz.ex"]
       end
     end
 
@@ -329,6 +330,7 @@ defmodule RewriteTest do
 
         assert project = Rewrite.new!("**", exclude: exclude?)
         assert project.sources |> Map.keys() == ["bar.ex"]
+        assert project.excluded == ["foo.ex"]
       end
     end
   end

@@ -32,9 +32,20 @@ defmodule Rewrite do
   alias Rewrite.SourceError
   alias Rewrite.UpdateError
 
-  defstruct [:id, sources: %{}, extensions: %{}, hooks: [], dot_formatter: nil]
+  defstruct sources: %{},
+            extensions: %{},
+            hooks: [],
+            dot_formatter: nil,
+            excluded: []
 
-  @type t :: %Rewrite{sources: %{Path.t() => Source.t()}}
+  @type t :: %Rewrite{
+          sources: %{Path.t() => Source.t()},
+          extensions: %{String.t() => [module()]},
+          hooks: [module()],
+          dot_formatter: DotFormatter.t() | nil,
+          excluded: [Path.t()]
+        }
+
   @type input :: Path.t() | wildcard() | GlobEx.t()
   @type wildcard :: IO.chardata()
   @type opts :: keyword()
@@ -80,7 +91,6 @@ defmodule Rewrite do
   def new(opts \\ []) do
     Rewrite
     |> struct!(
-      id: System.unique_integer([:positive]),
       extensions: extensions(opts),
       hooks: Keyword.get(opts, :hooks, [])
     )
@@ -126,15 +136,15 @@ defmodule Rewrite do
 
     inputs = expand(inputs)
 
-    {added, sources} =
+    {added, excluded, sources} =
       Rewrite.TaskSupervisor
       |> Task.Supervisor.async_stream_nolink(inputs, reader)
-      |> Enum.reduce({[], rewrite.sources}, fn
-        {:ok, nil}, {added, sources} ->
-          {added, sources}
+      |> Enum.reduce({[], [], rewrite.sources}, fn
+        {:ok, {path, :excluded}}, {added, excluded, sources} ->
+          {added, [path | excluded], sources}
 
-        {:ok, {path, source}}, {added, sources} ->
-          {[path | added], Map.put(sources, path, source)}
+        {:ok, {path, source}}, {added, excluded, sources} ->
+          {[path | added], excluded, Map.put(sources, path, source)}
 
         {:exit, {error, _stacktrace}}, _sources when is_exception(error) ->
           raise error
@@ -142,6 +152,7 @@ defmodule Rewrite do
 
     rewrite
     |> Map.put(:sources, sources)
+    |> Map.update!(:excluded, fn list -> list |> Enum.concat(excluded) |> Enum.uniq() end)
     |> handle_hooks({:added, added})
   end
 
@@ -153,7 +164,7 @@ defmodule Rewrite do
       Logger.disable(self())
 
       if exclude?.(path) || File.dir?(path) || (!force && path in paths) do
-        nil
+        {path, :excluded}
       else
         source = read_source!(path, extensions)
         {path, source}
