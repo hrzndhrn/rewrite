@@ -2,7 +2,7 @@
 
 ## 1.1.0 - 2024/11/09
 
-+ Adde `:exclude` option to `Rewrite.new!/2` and `Rewrite.read!/2`.
++ Added `:exclude` option to `Rewrite.new!/2` and `Rewrite.read!/2`.
 
 ## 1.0.1 - 2024/11/03
 
