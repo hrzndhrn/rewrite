@@ -125,7 +125,7 @@ defmodule Rewrite do
       `force: true` updates and issues for an already existing source are 
       deleted.
 
-    * 'exclude' - a list of paths and/or glob expressions to exclude sources 
+    * `:exclude` - a list of paths and/or glob expressions to exclude sources 
       from the project. The option also accepts a predicate function which is 
       called for each source path.  The exclusion takes place before the file is 
       read.
