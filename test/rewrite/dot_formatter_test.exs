@@ -2032,6 +2032,18 @@ defmodule Rewrite.DotFormatterTest do
       end
     end
 
+    test "ignores mising subdirectories", context do
+      in_tmp context do
+        write!(
+          ".formatter.exs": """
+          [subdirectories: ["priv", "lib"]]
+          """
+        )
+
+        assert {:ok, _dot_formatter} = DotFormatter.read(ignore_missing_sub_formatters: true)
+      end
+    end
+
     test "reads dot formatters from subdirectories", context do
       in_tmp context do
         write!(@time,

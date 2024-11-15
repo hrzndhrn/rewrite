@@ -2,8 +2,8 @@ defmodule Rewrite.DotFormatter do
   @moduledoc """
   Provides an alternative API to the Elixir dot formatter.
 
-  The `DotFormatter` has the same functionality as the code that provides the 
-  `mix format` task. But `DotFormatter` provides a struct for the evaluated 
+  The `DotFormatter` has the same functionality as the code that provides the
+  `mix format` task. But `DotFormatter` provides a struct for the evaluated
   formatter config to provide a more convenient API.
   """
 
@@ -79,8 +79,8 @@ defmodule Rewrite.DotFormatter do
   Reads the `.formatter.exs` file in the current directory or the given
   `%Rewrite{}` project.
 
-  If a `%Rewrite{}` project is given to the function, the formatter is searched 
-  in the project and the latest version from the source is used. As a fallback, 
+  If a `%Rewrite{}` project is given to the function, the formatter is searched
+  in the project and the latest version from the source is used. As a fallback,
   it will search the file system for the required files.
 
   The function returns a `%DotFormatter{}` struct with all sub-formatters.
@@ -92,8 +92,11 @@ defmodule Rewrite.DotFormatter do
     * `replace_plugins` - a list of `{old, new}` tuples to replace plugins in
       the formatter.
 
-    * `ignore_unknown_deps` - ingores unknown dependencies in `:import_deps` 
+    * `ignore_unknown_deps` - ingores unknown dependencies in `:import_deps`
       when set to `true`. Defaults to `false`.
+
+    * `ignore_missing_sub_formatters` - ignores missign sub formatters when set
+      to `true`, Defaults to `false`.
   """
   @spec read(rewrite :: Rewrite.t() | keyword() | nil, keyword()) ::
           {:ok, t()} | {:error, DotFormatterError.t()}
@@ -619,9 +622,9 @@ defmodule Rewrite.DotFormatter do
   Formats the given `string` using the specified `dot_formatter`, `file`, and
   `options`.
 
-  The `file` is used to determine the formatter. 
+  The `file` is used to determine the formatter.
 
-  Returns an :ok tuple with the formatted string on success, or an error tuple 
+  Returns an :ok tuple with the formatted string on success, or an error tuple
   on failure.
   """
   @spec format_string(t(), Path.t(), String.t(), keyword()) ::
@@ -652,8 +655,8 @@ defmodule Rewrite.DotFormatter do
   @doc """
   A convenience function for `format_string/4` to format a string.
 
-  This function reads the `%DotFormatter{}` with the given `opts` and calls 
-  `format_string/4`. The used file name defaults to `nofile.ex` and can be set 
+  This function reads the `%DotFormatter{}` with the given `opts` and calls
+  `format_string/4`. The used file name defaults to `nofile.ex` and can be set
   in the `opts`.
 
   ## Options
@@ -692,7 +695,7 @@ defmodule Rewrite.DotFormatter do
   The `file` is used to determine the formatter. If no formatter is found, an
   error tuple is returned.
 
-  Returns an :ok tuple with the formatted string on success, or an error tuple 
+  Returns an :ok tuple with the formatted string on success, or an error tuple
   on failure.
   """
   @spec format_quoted(t(), Path.t(), Macro.t(), keyword()) ::
@@ -726,8 +729,8 @@ defmodule Rewrite.DotFormatter do
   @doc """
   A convenience function for `format_quoted/4` to format a string.
 
-  This function reads the `%DotFormatter{}` with the given `opts` and calls 
-  `format_quoted/4`. The used file name defaults to `nofile.ex` and can be set 
+  This function reads the `%DotFormatter{}` with the given `opts` and calls
+  `format_quoted/4`. The used file name defaults to `nofile.ex` and can be set
   in the `opts`.
 
   ## Options
@@ -775,10 +778,10 @@ defmodule Rewrite.DotFormatter do
   @doc """
   Returns the formatter options for the given `dot_formatter` and `file`.
 
-  This fucntion searches the formatter for the given `file` and returns the 
+  This fucntion searches the formatter for the given `file` and returns the
   formater options for that formatter in an `:ok` tuple.
 
-  If no formatter or multiple formatters are found, an `:error` tuple is 
+  If no formatter or multiple formatters are found, an `:error` tuple is
   returned.
   """
   @spec formatter_opts_for_file(t(), Path.t()) :: keyword()
@@ -789,7 +792,7 @@ defmodule Rewrite.DotFormatter do
   end
 
   @doc """
-  Returns an `:ok` tuple with a list of `{path, formatter}` tuples for the given 
+  Returns an `:ok` tuple with a list of `{path, formatter}` tuples for the given
   `dot_formatter`.
 
   In case of an conflict, an `:error` tuple is returned. A conflicting file is a
@@ -923,7 +926,7 @@ defmodule Rewrite.DotFormatter do
   end
 
   @doc """
-  Returns a list of all `:inputs` from the given `dot_formatter` and any 
+  Returns a list of all `:inputs` from the given `dot_formatter` and any
   sub-formatters.
   """
   @spec inputs(t()) :: [GlobEx.t()]
@@ -1205,9 +1208,18 @@ defmodule Rewrite.DotFormatter do
       end)
 
     case result do
-      {:error, _reason} = error -> error
-      [] -> {:error, %DotFormatterError{reason: {:no_subs, subdirectory}}}
-      subs when is_list(subs) -> {:ok, subs}
+      {:error, _reason} = error ->
+        error
+
+      [] ->
+        if opts[:ignore_missing_sub_formatters] do
+          {:ok, []}
+        else
+          {:error, %DotFormatterError{reason: {:no_subs, subdirectory}}}
+        end
+
+      subs when is_list(subs) ->
+        {:ok, subs}
     end
   end
 

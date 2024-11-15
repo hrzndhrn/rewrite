@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 - 2024/11/15
+
++ Add option `ignore_missing_sub_formatters` in `Rewrite.DotFormatter.read/2` 
+  and friends.
+
 ## 1.1.0 - 2024/11/09
 
 + Added `:exclude` option to `Rewrite.new!/2` and `Rewrite.read!/2`.
