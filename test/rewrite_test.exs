@@ -252,8 +252,7 @@ defmodule RewriteTest do
       assert Enum.count(project.sources) == 2
       assert %Source{filetype: nil, owner: Test} = Rewrite.source!(project, txt)
 
-      assert %Source{filetype: %Source.Ex{opts: opts}} =
-               Rewrite.source!(project, ex)
+      assert %Source{filetype: %Source.Ex{opts: opts}} = Rewrite.source!(project, ex)
 
       assert opts == [formatter_opts: [exclude_plugins: [Test]]]
     end

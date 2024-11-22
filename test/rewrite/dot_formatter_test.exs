@@ -1140,8 +1140,7 @@ defmodule Rewrite.DotFormatterTest do
         {:ok, dot_formatter} =
           DotFormatter.read(replace_plugins: [{NewlineToDotPlugin, ExtensionWPlugin}])
 
-        assert {:ok, rewrite} =
-                 DotFormatter.format_rewrite(dot_formatter, rewrite)
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
 
         assert read!(rewrite, "a.w") == "foo\nbar\nbaz\n"
       end
@@ -1164,8 +1163,7 @@ defmodule Rewrite.DotFormatterTest do
         {:ok, dot_formatter} = DotFormatter.read(dot_formatter: "custom_formatter.exs")
         rewrite = Rewrite.new!("**/*")
 
-        assert {:ok, rewrite} =
-                 DotFormatter.format_rewrite(dot_formatter, rewrite)
+        assert {:ok, rewrite} = DotFormatter.format_rewrite(dot_formatter, rewrite)
 
         assert read!(rewrite, "a.ex") == """
                foo bar(baz)
@@ -1599,8 +1597,7 @@ defmodule Rewrite.DotFormatterTest do
     end
 
     test "returns an error for invlaid quoted expression" do
-      assert {:error, %FunctionClauseError{}} =
-               DotFormatter.format_quoted({:x, :x, :x})
+      assert {:error, %FunctionClauseError{}} = DotFormatter.format_quoted({:x, :x, :x})
     end
   end
 
@@ -2040,7 +2037,27 @@ defmodule Rewrite.DotFormatterTest do
           """
         )
 
-        assert {:ok, _dot_formatter} = DotFormatter.read(ignore_missing_sub_formatters: true)
+        assert {:ok, dot_formatter} = DotFormatter.read(ignore_missing_sub_formatters: true)
+        assert dot_formatter.subdirectories == ["priv", "lib"]
+        assert dot_formatter.subs == []
+      end
+    end
+
+    test "ignores mising subdirectory", context do
+      in_tmp context do
+        write!(
+          ".formatter.exs": """
+          [subdirectories: ["priv", "lib"]]
+          """,
+          "priv/.formatter.exs": """
+          [inputs: ["*"]]
+          """
+        )
+
+        assert {:ok, dot_formatter} = DotFormatter.read(ignore_missing_sub_formatters: true)
+        assert dot_formatter.subdirectories == ["priv", "lib"]
+        assert [sub] = dot_formatter.subs
+        assert sub.path == "priv"
       end
     end
 
