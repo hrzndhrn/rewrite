@@ -1219,7 +1219,11 @@ defmodule Rewrite.DotFormatter do
         end
 
       subs when is_list(subs) ->
-        {:ok, subs}
+        if length(subs) == length(dirs) or opts[:ignore_missing_sub_formatters] do
+          {:ok, subs}
+        else
+          {:error, %DotFormatterError{reason: {:missing_subs, subdirectory}}}
+        end
     end
   end
 

@@ -1,6 +1,6 @@
 defmodule Rewrite.DotFormatterError do
   @moduledoc """
-  An exception raised when an error is encountered while working with 
+  An exception raised when an error is encountered while working with
   dot_formatters.
   """
 
@@ -94,6 +94,10 @@ defmodule Rewrite.DotFormatterError do
   end
 
   def message(%{reason: {:no_subs, dirs}}) do
-    "No sub formatter found in #{inspect(dirs)}"
+    "No sub formatter(s) found in #{inspect(dirs)}"
+  end
+
+  def message(%{reason: {:missing_subs, dirs}}) do
+    "Missing sub formatter(s) in #{inspect(dirs)}"
   end
 end

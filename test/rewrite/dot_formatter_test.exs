@@ -2025,7 +2025,26 @@ defmodule Rewrite.DotFormatterTest do
         )
 
         assert {:error, error} = DotFormatter.read()
-        assert Exception.message(error) == "No sub formatter found in \"priv\""
+        assert Exception.message(error) == "No sub formatter(s) found in \"priv\""
+      end
+    end
+
+    test "returns an error tuple for some mising subdirectories", context do
+      in_tmp context do
+        write!(
+          ".formatter.exs": """
+          [subdirectories: ["priv/*/migrations"]]
+          """,
+          "priv/foo/migrations/.formatter.exs": """
+          [inputs: ["*.exs"]]
+          """,
+          "priv/bar/migrations/foo.exs": """
+          :foo
+          """
+        )
+
+        assert {:error, error} = DotFormatter.read()
+        assert Exception.message(error) == "Missing sub formatter(s) in \"priv/*/migrations\""
       end
     end
 
@@ -2033,13 +2052,14 @@ defmodule Rewrite.DotFormatterTest do
       in_tmp context do
         write!(
           ".formatter.exs": """
-          [subdirectories: ["priv", "lib"]]
+          [subdirectories: ["priv", "lib"], locals_without_parens: [foo: 1]]
           """
         )
 
         assert {:ok, dot_formatter} = DotFormatter.read(ignore_missing_sub_formatters: true)
         assert dot_formatter.subdirectories == ["priv", "lib"]
         assert dot_formatter.subs == []
+        assert DotFormatter.format_string(dot_formatter, "lib/foo.ex", "foo   x") == {:ok, "foo x\n"}
       end
     end
 
@@ -2147,14 +2167,14 @@ defmodule Rewrite.DotFormatterTest do
       in_tmp context do
         write!(@time,
           ".formatter.exs": """
-          [subdirectories: ["*"]]
+          [subdirectories: ["sub/*"]]
           """,
           "foo.exs": "# causes no error",
           "foo/bar.exs": "# causes no error",
-          "priv/.formatter.exs": """
+          "sub/priv/.formatter.exs": """
           [inputs: "a.ex", locals_without_parens: [other_fun: 2]]
           """,
-          "lib/.formatter.exs": """
+          "sub/lib/.formatter.exs": """
           [inputs: "**/*", locals_without_parens: [my_fun: 2]]
           """
         )
@@ -2166,23 +2186,23 @@ defmodule Rewrite.DotFormatterTest do
                  path: "",
                  plugins: [],
                  timestamp: @time,
-                 subdirectories: ["*"],
+                 subdirectories: ["sub/*"],
                  subs: [
                    %Rewrite.DotFormatter{
-                     inputs: [~g|priv/a.ex|d],
+                     inputs: [~g|sub/priv/a.ex|d],
                      locals_without_parens: [other_fun: 2],
                      plugins: [],
                      timestamp: @time,
                      source: ".formatter.exs",
-                     path: "priv"
+                     path: "sub/priv"
                    },
                    %Rewrite.DotFormatter{
-                     inputs: [~g|lib/**/*|d],
+                     inputs: [~g|sub/lib/**/*|d],
                      locals_without_parens: [my_fun: 2],
                      plugins: [],
                      timestamp: @time,
                      source: ".formatter.exs",
-                     path: "lib"
+                     path: "sub/lib"
                    }
                  ]
                }
