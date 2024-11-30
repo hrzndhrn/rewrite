@@ -2059,7 +2059,9 @@ defmodule Rewrite.DotFormatterTest do
         assert {:ok, dot_formatter} = DotFormatter.read(ignore_missing_sub_formatters: true)
         assert dot_formatter.subdirectories == ["priv", "lib"]
         assert dot_formatter.subs == []
-        assert DotFormatter.format_string(dot_formatter, "lib/foo.ex", "foo   x") == {:ok, "foo x\n"}
+
+        assert DotFormatter.format_string(dot_formatter, "lib/foo.ex", "foo   x") ==
+                 {:ok, "foo x\n"}
       end
     end
 
