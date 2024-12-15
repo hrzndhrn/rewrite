@@ -71,7 +71,8 @@ defmodule Rewrite.MixProject do
   defp aliases do
     [
       carp: "test --trace --seed 0 --max-failures 1",
-      cover: "coveralls.html"
+      cover: "coveralls.html",
+      test: "ex_unit_ext.test --dbg-log"
     ]
   end
 
@@ -85,7 +86,8 @@ defmodule Rewrite.MixProject do
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.25", only: :dev, runtime: false},
-      {:excoveralls, "~> 0.10", only: :test}
+      {:excoveralls, "~> 0.10", only: :test},
+      {:ex_unit_ext, "0.1.0-alpha.0", only: :test}
     ]
   end
 

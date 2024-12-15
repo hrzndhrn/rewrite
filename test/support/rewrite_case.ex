@@ -70,7 +70,7 @@ end
 defmodule RewriteCase do
   @moduledoc false
 
-  use ExUnit.CaseTemplate, async: false
+  use ExUnit.CaseTemplate
 
   using do
     quote do

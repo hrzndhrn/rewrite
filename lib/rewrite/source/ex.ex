@@ -15,7 +15,7 @@ defmodule Rewrite.Source.Ex do
   new code is parsed to a new `:quoted`. That means that
   `Source.update(source, :quoted, quoted)` also updates the AST.
 
-  The resyncing of `:quoted` can be suppressed with the option 
+  The resyncing of `:quoted` can be suppressed with the option
   `resync_quoted: false`.
 
   ## Examples

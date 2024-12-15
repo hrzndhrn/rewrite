@@ -1,5 +1,5 @@
 defmodule RewriteTest do
-  use RewriteCase, async: false
+  use RewriteCase
 
   import GlobEx.Sigils
 

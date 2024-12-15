@@ -1,5 +1,5 @@
 defmodule Rewrite.DotFormatterTest do
-  use RewriteCase, async: false
+  use RewriteCase
 
   import GlobEx.Sigils
 
