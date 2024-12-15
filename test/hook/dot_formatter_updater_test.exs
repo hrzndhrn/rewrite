@@ -1,5 +1,5 @@
 defmodule Rewrite.Hook.DotFormatterUpdaterTest do
-  use RewriteCase, async: false
+  use RewriteCase
 
   alias Rewrite.Hook.DotFormatterUpdater
   alias Rewrite.Source

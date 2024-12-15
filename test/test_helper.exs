@@ -2,4 +2,4 @@
 |> Path.wildcard()
 |> Enum.each(&Code.compile_file/1)
 
-ExUnit.start()
+ExUnit.start(theme: "block")
