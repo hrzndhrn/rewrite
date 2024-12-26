@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2 - dev
+
++ Clean up `extra_applications`.
+
 ## 1.1.1 - 2024/11/15
 
 + Add option `ignore_missing_sub_formatters` in `Rewrite.DotFormatter.read/2` 
