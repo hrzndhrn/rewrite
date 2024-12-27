@@ -1,7 +1,7 @@
 defmodule Rewrite.MixProject do
   use Mix.Project
 
-  @version "1.1.1"
+  @version "1.1.2"
   @source_url "https://github.com/hrzndhrn/rewrite"
 
   def project do
@@ -25,7 +25,7 @@ defmodule Rewrite.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :mix, :crypto],
+      extra_applications: [:logger],
       mod: {Rewrite.Application, []}
     ]
   end
@@ -52,6 +52,7 @@ defmodule Rewrite.MixProject do
   defp dialyzer do
     [
       ignore_warnings: ".dialyzer_ignore.exs",
+      plt_add_apps: [:mix],
       plt_file: {:no_warn, "test/support/plts/dialyzer.plt"},
       flags: [:unmatched_returns]
     ]
