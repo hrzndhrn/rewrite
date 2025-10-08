@@ -1111,6 +1111,15 @@ defmodule RewriteTest do
       assert Enum.slice(project, 1, 0) == []
     end
 
+    test "to_list/1" do
+      a = Source.from_string(":a", path: "a.exs")
+      b = Source.from_string(":b", path: "b.exs")
+      c = Source.from_string(":c", path: "c.exs")
+      {:ok, project} = Rewrite.from_sources([a, b, c])
+
+      assert Enum.to_list(project) == [a, b, c]
+    end
+
     test "member?/1 returns true" do
       project = Rewrite.new()
       project = Rewrite.new_source!(project, "a.ex", ":a")
