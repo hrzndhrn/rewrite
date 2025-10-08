@@ -159,7 +159,7 @@ defmodule Rewrite.Source do
 
     * `:owner` - an association to the module that owns the `source`.
 
-    * `:dot_formatter` - a fromatter for the `source`.
+    * `:dot_formatter` - a formatter for the `source`.
 
     * `path` - the path of the `source`.
 

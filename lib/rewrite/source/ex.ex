@@ -15,7 +15,7 @@ defmodule Rewrite.Source.Ex do
   new code is parsed to a new `:quoted`. That means that
   `Source.update(source, :quoted, quoted)` also updates the AST.
 
-  The resyncing of `:quoted` can be suppressed with the option 
+  The resyncing of `:quoted` can be suppressed with the option
   `resync_quoted: false`.
 
   ## Examples
@@ -276,10 +276,10 @@ defmodule Rewrite.Source.Ex do
     end
   end
 
-  @deprecated "Use the fromatting functionlity provided by Rewrite.DotFormatter instead."
+  @deprecated "Use the formatting functionlity provided by Rewrite.DotFormatter instead."
   def put_formatter_opts(source, _opts), do: source
 
-  @deprecated "Use the fromatting functionlity provided by Rewrite.DotFormatter instead."
+  @deprecated "Use the formatting functionlity provided by Rewrite.DotFormatter instead."
   def format(source, _formatter_opts \\ nil) do
     dot_formatter =
       case DotFormatter.read() do
