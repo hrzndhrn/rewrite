@@ -1,8 +1,11 @@
 # Changelog
 
-## 1.1.2 - dev
+## 1.2.0 - dev
 
-+ Clean up `extra_applications`.
++ Changes for Elixir 1.19
++ Required Elixir version set to `~> 1.14`
++ Clean up `extra_applications`
+
 
 ## 1.1.1 - 2024/11/15
 

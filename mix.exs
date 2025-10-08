@@ -13,7 +13,7 @@ defmodule Rewrite.MixProject do
       description: description(),
       dialyzer: dialyzer(),
       docs: docs(),
-      elixir: "~> 1.13",
+      elixir: "~> 1.14",
       package: package(),
       source_url: @source_url,
       start_permanent: Mix.env() == :prod,
