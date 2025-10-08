@@ -935,10 +935,10 @@ defmodule Rewrite.Source do
   @spec format(t(), opts()) :: {:ok, t()} | {:error, term()}
   def format(%Source{} = source, opts \\ []) do
     path = Map.get(source, :path) || default_path(source)
-    dot_fromatter = Keyword.get(opts, :dot_formatter, DotFormatter.default())
+    dot_formatter = Keyword.get(opts, :dot_formatter, DotFormatter.default())
     by = Keyword.get(opts, :by, Rewrite)
 
-    with {:ok, formatted} <- DotFormatter.format_string(dot_fromatter, path, source.content, opts) do
+    with {:ok, formatted} <- DotFormatter.format_string(dot_formatter, path, source.content, opts) do
       {:ok, update(source, :content, formatted, by: by)}
     end
   end
