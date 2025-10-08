@@ -2,27 +2,27 @@ defmodule Rewrite do
   @moduledoc """
   `Rewrite` is a tool for modifying, adding and removing files in a `Mix` project.
 
-  The package is intended for use in `Mix` tasks. `Rewrite` itself uses functions 
-  provided by `Mix`. 
+  The package is intended for use in `Mix` tasks. `Rewrite` itself uses functions
+  provided by `Mix`.
 
-  With `Rewrite.read!/2` you can load the whole project. Then you can modify the 
-  project with a number of functions provided by `Rewrite` and `Rewrite.Source` 
-  without writing any changes back to the file system. All changes are stored in 
-  the source structs. Any version of a source is available in the project. To 
+  With `Rewrite.read!/2` you can load the whole project. Then you can modify the
+  project with a number of functions provided by `Rewrite` and `Rewrite.Source`
+  without writing any changes back to the file system. All changes are stored in
+  the source structs. Any version of a source is available in the project. To
   write the whole project back to the file system, the `Rewrite.write_all/2` can
   be used.
 
-  Elixir source files can be modified by modifying the AST. For this `Rewrite` 
+  Elixir source files can be modified by modifying the AST. For this `Rewrite`
   uses the `Sourceror` package to create the AST and to convert it back. The
   `Sourceror` package also provides all the utilities needed to manipulate the
   AST.
 
-  Sources can also receive a `Rewrite.Issue` to document problems or information 
-  with the source. 
+  Sources can also receive a `Rewrite.Issue` to document problems or information
+  with the source.
 
-  `Rewrite` respects the `.formatter.exs` in the project when rewriting sources. 
-  To do this, the formatter can be read by `Rewrite.DotFormatter` and the 
-  resulting DotFormatter struct can be used in the function to update the 
+  `Rewrite` respects the `.formatter.exs` in the project when rewriting sources.
+  To do this, the formatter can be read by `Rewrite.DotFormatter` and the
+  resulting DotFormatter struct can be used in the function to update the
   sources.
   """
 
@@ -58,10 +58,10 @@ defmodule Rewrite do
 
   ## Options
 
-    * `:filetypes` - a list of modules implementing the behavior 
-      `Rewrite.Filetype`. This list is used to add the `filetype` to the 
-      `sources` of the corresponding files. The list can contain modules 
-      representing a file type or a tuple of `{module(), keyword()}`. Rewrite 
+    * `:filetypes` - a list of modules implementing the behavior
+      `Rewrite.Filetype`. This list is used to add the `filetype` to the
+      `sources` of the corresponding files. The list can contain modules
+      representing a file type or a tuple of `{module(), keyword()}`. Rewrite
       uses the keyword list from the tuple as the options argument when a file
       is read.
 
@@ -105,9 +105,9 @@ defmodule Rewrite do
 
     * Accepts the same options as `new/1`.
 
-    * 'exclude' - a list of paths and/or glob expressions to exclude sources 
-      from the project. The option also accepts a predicate function which is 
-      called for each source path.  The exclusion takes place before the file is 
+    * 'exclude' - a list of paths and/or glob expressions to exclude sources
+      from the project. The option also accepts a predicate function which is
+      called for each source path.  The exclusion takes place before the file is
       read.
   """
   @spec new!(input() | [input()], opts) :: t()
@@ -122,12 +122,12 @@ defmodule Rewrite do
   ## Options
 
     * `:force`, default: `false` - forces the reading of sources. With
-      `force: true` updates and issues for an already existing source are 
+      `force: true` updates and issues for an already existing source are
       deleted.
 
-    * `:exclude` - a list of paths and/or glob expressions to exclude sources 
-      from the project. The option also accepts a predicate function which is 
-      called for each source path.  The exclusion takes place before the file is 
+    * `:exclude` - a list of paths and/or glob expressions to exclude sources
+      from the project. The option also accepts a predicate function which is
+      called for each source path.  The exclusion takes place before the file is
       read.
   """
   @spec read!(t(), input() | [input()], opts()) :: t()
@@ -258,9 +258,9 @@ defmodule Rewrite do
   end
 
   @doc """
-  Deletes the source for the given `path` from the `rewrite`. 
+  Deletes the source for the given `path` from the `rewrite`.
 
-  The file system files are not removed, even if the project is written. Use 
+  The file system files are not removed, even if the project is written. Use
   `rm/2` or `rm!/2` to delete a file and source.
 
   If the source is not part of the `rewrite` project the unchanged `rewrite` is
@@ -293,7 +293,7 @@ defmodule Rewrite do
   @doc """
   Drops the sources with the given `paths` from the `rewrite` project.
 
-  The file system files are not removed, even if the project is written. Use 
+  The file system files are not removed, even if the project is written. Use
   `rm/2` or `rm!/2` to delete a file and source.
 
   If `paths` contains paths that are not in `rewrite`, they're simply ignored.
@@ -315,7 +315,7 @@ defmodule Rewrite do
   end
 
   @doc """
-  Tries to delete the `source` file in the file system and removes the `source` 
+  Tries to delete the `source` file in the file system and removes the `source`
   from the `rewrite` project.
 
   Returns `{:ok, rewrite}` if successful, or `{:error, error}` if an error
@@ -808,7 +808,7 @@ defmodule Rewrite do
 
   Returns `{:ok, rewrite}` if all sources are written successfully.
 
-  Returns `{:error, reasons, rewrite}` where `rewrite` is updated for all 
+  Returns `{:error, reasons, rewrite}` where `rewrite` is updated for all
   sources that are written successfully.
 
   ## Options
@@ -850,9 +850,9 @@ defmodule Rewrite do
   @doc """
   Formats the given `rewrite` project with the given `dot_formatter`.
 
-  Uses the formatter from `dot_formatter/2` if no formatter ist set by 
-  `:dot_formatter` in the options. The other options are the same as for 
-  `DotFormatter.read!/2`. 
+  Uses the formatter from `dot_formatter/2` if no formatter ist set by
+  `:dot_formatter` in the options. The other options are the same as for
+  `DotFormatter.read!/2`.
   """
   @spec format(t(), opts()) :: {:ok, t()} | {:error, term()}
   def format(%Rewrite{} = rewrite, opts \\ []) do
@@ -874,9 +874,9 @@ defmodule Rewrite do
   @doc """
   Formats a source in a `rewrite` project.
 
-  Uses the formatter from `dot_formatter/2` if no formatter ist set by 
-  `:dot_formatter` in the options. The other options are the same as for 
-  `Code.format_string!/2`. 
+  Uses the formatter from `dot_formatter/2` if no formatter ist set by
+  `:dot_formatter` in the options. The other options are the same as for
+  `Code.format_string!/2`.
   """
   @spec format_source(t(), Path.t() | Source.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def format_source(rewrite, file, opts \\ [])
@@ -904,7 +904,7 @@ defmodule Rewrite do
   @doc """
   Returns the `DotFormatter` for the given `rewrite` project.
 
-  When no formatter is set, the default formatter from 
+  When no formatter is set, the default formatter from
   `Rewrite.DotFormatter.default/0` is returned. A dot formatter can be set with
   `dot_formatter/2`.
   """
@@ -924,11 +924,11 @@ defmodule Rewrite do
   @doc """
   Creates a new `%Source{}` and puts the source to the `%Rewrite{}` project.
 
-  The `:filetypes` option of the project is used to create the source. If 
-  options have been specified for the file type, the given options will be 
+  The `:filetypes` option of the project is used to create the source. If
+  options have been specified for the file type, the given options will be
   merged into those options.
 
-  Use `create_source/4` if the source is not to be inserted directly into the 
+  Use `create_source/4` if the source is not to be inserted directly into the
   project.
   """
   @spec new_source(t(), Path.t(), String.t(), opts()) :: {:ok, t()} | {:error, Error.t()}
@@ -958,12 +958,12 @@ defmodule Rewrite do
   @doc """
   Creates a new `%Source{}` without putting it to the `%Rewrite{}` project.
 
-  The `:filetypes` option of the project is used to create the source. If 
-  options have been specified for the file type, the given options will be 
-  merged into those options. If no `path` is given, the default file type is 
+  The `:filetypes` option of the project is used to create the source. If
+  options have been specified for the file type, the given options will be
+  merged into those options. If no `path` is given, the default file type is
   created.
 
-  The function does not check whether the `%Rewrite{}` project already has a 
+  The function does not check whether the `%Rewrite{}` project already has a
   `%Source{}` with the specified path.
 
   Use `new_source/4` if the source is to be inserted directly into the project.
@@ -1023,14 +1023,13 @@ defmodule Rewrite do
     end
 
     def slice(rewrite) do
-      sources = rewrite.sources |> Map.values() |> Enum.sort_by(fn source -> source.path end)
-      length = length(sources)
+      size = map_size(rewrite.sources)
 
-      {:ok, length,
-       fn
-         start, count when start + count == length -> Enum.drop(sources, start)
-         start, count -> sources |> Enum.drop(start) |> Enum.take(count)
-       end}
+      to_list = fn rewrite ->
+        rewrite.sources |> Map.values() |> Enum.sort_by(fn source -> source.path end)
+      end
+
+      {:ok, size, to_list}
     end
 
     def reduce(rewrite, acc, fun) do

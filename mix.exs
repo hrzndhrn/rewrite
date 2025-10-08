@@ -15,10 +15,10 @@ defmodule Rewrite.MixProject do
       docs: docs(),
       elixir: "~> 1.13",
       package: package(),
-      preferred_cli_env: preferred_cli_env(),
       source_url: @source_url,
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r'test/support/.*', ~r'test/fixtures/.*'],
       xref: [exclude: [FreedomFormatter.Formatter]]
     ]
   end
@@ -27,6 +27,19 @@ defmodule Rewrite.MixProject do
     [
       extra_applications: [:logger],
       mod: {Rewrite.Application, []}
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        carp: :test,
+        cover: :test,
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.html": :test,
+        "coveralls.github": :test
+      ]
     ]
   end
 
@@ -55,17 +68,6 @@ defmodule Rewrite.MixProject do
       plt_add_apps: [:mix],
       plt_file: {:no_warn, "test/support/plts/dialyzer.plt"},
       flags: [:unmatched_returns]
-    ]
-  end
-
-  def preferred_cli_env do
-    [
-      carp: :test,
-      cover: :test,
-      coveralls: :test,
-      "coveralls.detail": :test,
-      "coveralls.html": :test,
-      "coveralls.github": :test
     ]
   end
 
