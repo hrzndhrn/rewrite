@@ -932,7 +932,7 @@ defmodule Rewrite.Source do
       end
       """
   '''
-  @spec format(t(), opts()) :: {:ok, t()} | {:errror, term()}
+  @spec format(t(), opts()) :: {:ok, t()} | {:error, term()}
   def format(%Source{} = source, opts \\ []) do
     path = Map.get(source, :path) || default_path(source)
     dot_fromatter = Keyword.get(opts, :dot_formatter, DotFormatter.default())
