@@ -1,8 +1,11 @@
 # Changelog
 
-## 1.1.2 - dev
+## 1.2.0 - dev
 
-+ Clean up `extra_applications`.
++ Changes for Elixir 1.19
++ Required Elixir version set to `~> 1.14`
++ Clean up `extra_applications`
+
 
 ## 1.1.1 - 2024/11/15
 
@@ -53,7 +56,7 @@ have been removed from the argument list and moved to the options.
 
 + Add `Rewrite.dot_formatter/1/2` to set and get formatters.
 
-+ Add `Rewrite.format/2` and `Rewrite.fromat!/2` to format a project.
++ Add `Rewrite.format/2` and `Rewrite.format!/2` to format a project.
 
 + Add `Rewrite.format_source/3` to format a source in a project.
 

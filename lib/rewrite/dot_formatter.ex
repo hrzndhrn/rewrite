@@ -1076,6 +1076,7 @@ defmodule Rewrite.DotFormatter do
     fn input ->
       case Code.format_string!(input, formatter_opts) do
         [] -> ""
+        "" -> ""
         formatted -> IO.iodata_to_binary([formatted, ?\n])
       end
     end
@@ -1175,7 +1176,7 @@ defmodule Rewrite.DotFormatter do
     end
   end
 
-  defp eval_subs(dot_formatter, project, opts) do
+  defp eval_subs(%DotFormatter{} = dot_formatter, project, opts) do
     subdirectories = dot_formatter.subdirectories || []
 
     result =
@@ -1190,7 +1191,7 @@ defmodule Rewrite.DotFormatter do
 
     case result do
       {:error, _reason} = error -> error
-      result -> {:ok, %DotFormatter{dot_formatter | subs: result}}
+      result -> {:ok, %{dot_formatter | subs: result}}
     end
   end
 

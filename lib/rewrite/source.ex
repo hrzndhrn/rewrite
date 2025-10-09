@@ -76,7 +76,7 @@ defmodule Rewrite.Source do
     * `from` - contains `:file` or `:string` depending on whether the `source`
       is created from a file or a string.
 
-    * `hash` - of the `source`. The `hash` is built from the `content` and 
+    * `hash` - of the `source`. The `hash` is built from the `content` and
       `path`.
 
     * `history` - of the `source`.
@@ -85,15 +85,15 @@ defmodule Rewrite.Source do
 
     * `owner` - of the `source`.
 
-    * `path` - of the `source`. Can be `nil` if the `source` was created by a 
+    * `path` - of the `source`. Can be `nil` if the `source` was created by a
       `string`.
 
     * `private` - a field for user defined data.
 
-    * `timestamp` - is set to the timestamp of the last modification of the file 
+    * `timestamp` - is set to the timestamp of the last modification of the file
       on disk at the time it was read.
 
-      If the `source` was created by a `string`, the timestamp is the creation 
+      If the `source` was created by a `string`, the timestamp is the creation
       time.
 
       The timestamp will be updated when the `source` is updated.
@@ -101,7 +101,7 @@ defmodule Rewrite.Source do
   @type t :: %Source{
           path: Path.t() | nil,
           content: String.t(),
-          hash: String.t(),
+          hash: non_neg_integer(),
           history: [{kind(), by(), String.t()}],
           issues: [{version(), issue()}],
           filetype: filetype(),
@@ -157,9 +157,9 @@ defmodule Rewrite.Source do
 
   ## Options
 
-    * `:owner` - an association to the module that owns the `source`. 
+    * `:owner` - an association to the module that owns the `source`.
 
-    * `:dot_formatter` - a fromatter for the `source`.
+    * `:dot_formatter` - a formatter for the `source`.
 
     * `path` - the path of the `source`.
 
@@ -457,7 +457,7 @@ defmodule Rewrite.Source do
       ...>   ":a"
       ...>   |> Source.Ex.from_string()
       ...>   |> Source.update(:quoted, fn quoted ->
-      ...>     {:__block__, meta, [atom]} = quoted 
+      ...>     {:__block__, meta, [atom]} = quoted
       ...>     {:__block__, meta, [{:ok, atom}]}
       ...>   end)
       iex> source.content
@@ -526,20 +526,20 @@ defmodule Rewrite.Source do
 
   defp update_timestamp(source), do: %{source | timestamp: now()}
 
-  defp do_update(source, :path, path) do
-    %Source{source | path: path}
+  defp do_update(%Source{} = source, :path, path) do
+    %{source | path: path}
   end
 
-  defp do_update(source, :content, content) do
-    %Source{source | content: content}
+  defp do_update(%Source{} = source, :content, content) do
+    %{source | content: content}
   end
 
-  defp update_filetype(%{filetype: nil} = source, _key, _opts), do: source
+  defp update_filetype(%Source{filetype: nil} = source, _key, _opts), do: source
 
-  defp update_filetype(%{filetype: %module{}} = source, key, opts) when is_atom(key) do
+  defp update_filetype(%Source{filetype: %module{}} = source, key, opts) when is_atom(key) do
     filetype = module.handle_update(source, key, opts)
 
-    %Source{source | filetype: filetype}
+    %{source | filetype: filetype}
   end
 
   defp update_content(source, nil, _by), do: source
@@ -890,7 +890,7 @@ defmodule Rewrite.Source do
   @doc ~s'''
   Formats the given `source`.
 
-  If the `source` was formatted the `source` gets a new `:history` entry, 
+  If the `source` was formatted the `source` gets a new `:history` entry,
   otherwise the unchanged `source` is returned.
 
   ## Options
@@ -900,11 +900,11 @@ defmodule Rewrite.Source do
 
     * `dot_formatter` - defaults to `Rewrite.DotFormatter.default/0`.
 
-    * Accepts also the same options as `Code.format_string!/2`. 
-    
+    * Accepts also the same options as `Code.format_string!/2`.
+
   ## Examples
 
-      
+
       iex> source = Source.Ex.from_string("""
       ...> defmodule    Foo do
       ...>     def   foo(x),   do:    bar x
@@ -920,7 +920,7 @@ defmodule Rewrite.Source do
       end
       """
       iex> dot_formatter = DotFormatter.from_formatter_opts(locals_without_parens: [bar: 1])
-      iex> {:ok, formatted} = Source.format(source, 
+      iex> {:ok, formatted} = Source.format(source,
       ...>   dot_formatter: dot_formatter, force_do_end_blocks: true
       ...> )
       iex> formatted.content
@@ -932,13 +932,13 @@ defmodule Rewrite.Source do
       end
       """
   '''
-  @spec format(t(), opts()) :: {:ok, t()} | {:errror, term()}
+  @spec format(t(), opts()) :: {:ok, t()} | {:error, term()}
   def format(%Source{} = source, opts \\ []) do
     path = Map.get(source, :path) || default_path(source)
-    dot_fromatter = Keyword.get(opts, :dot_formatter, DotFormatter.default())
+    dot_formatter = Keyword.get(opts, :dot_formatter, DotFormatter.default())
     by = Keyword.get(opts, :by, Rewrite)
 
-    with {:ok, formatted} <- DotFormatter.format_string(dot_fromatter, path, source.content, opts) do
+    with {:ok, formatted} <- DotFormatter.format_string(dot_formatter, path, source.content, opts) do
       {:ok, update(source, :content, formatted, by: by)}
     end
   end
