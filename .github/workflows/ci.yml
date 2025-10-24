@@ -22,7 +22,7 @@ jobs:
             otp: '26.2'
           - elixir: '1.18.4'
             otp: '28.1'
-            lint: true
+            static_code_analysis: true
           - elixir: '1.17.3'
             otp: '25.3'
           - elixir: '1.16.3'
@@ -93,5 +93,5 @@ jobs:
         if: ${{ matrix.coverage }}
         run: mix coveralls.github
       - name: Static code analysis
-        if: ${{ matrix.lint }}
+        if: ${{ matrix.static_code_analysis }}
         run: mix dialyzer --format github --force-check
