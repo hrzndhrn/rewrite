@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0 - 2026/03/06
+
++ Required Elixir version set to `~> 1.15`
++ Fix warnings for Elixir 1.20
+
 ## 1.2.0 - 2025/10/09
 
 + Changes for Elixir 1.19

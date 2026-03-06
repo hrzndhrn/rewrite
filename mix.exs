@@ -1,7 +1,7 @@
 defmodule Rewrite.MixProject do
   use Mix.Project
 
-  @version "1.2.0"
+  @version "1.3.0"
   @source_url "https://github.com/hrzndhrn/rewrite"
 
   def project do
@@ -13,7 +13,7 @@ defmodule Rewrite.MixProject do
       description: description(),
       dialyzer: dialyzer(),
       docs: docs(),
-      elixir: "~> 1.14",
+      elixir: "~> 1.15",
       package: package(),
       source_url: @source_url,
       start_permanent: Mix.env() == :prod,

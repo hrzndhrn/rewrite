@@ -161,7 +161,7 @@ defmodule Rewrite do
     exclude? = opts |> Keyword.get(:exclude) |> exclude()
 
     fn path ->
-      Logger.disable(self())
+      Logger.put_process_level(self(), :none)
 
       if exclude?.(path) || File.dir?(path) || (!force && path in paths) do
         {path, :excluded}

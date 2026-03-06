@@ -1009,7 +1009,7 @@ defmodule Rewrite.DotFormatter do
       size = byte_size(sub_formatter.path)
 
       case file do
-        <<prefix::binary-size(size), dir_separator, _::binary>>
+        <<prefix::binary-size(^size), dir_separator, _::binary>>
         when prefix == sub_formatter.path and dir_separator in [?\\, ?/] ->
           dot_formatter_for_file(sub_formatter, file)
 
@@ -1164,9 +1164,6 @@ defmodule Rewrite.DotFormatter do
                 reason: {:dep_not_found, dep},
                 path: Path.relative_to(path, File.cwd!())
               }}}
-
-          {:error, _reason} = error ->
-            {:halt, error}
         end
       end)
 
