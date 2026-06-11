@@ -123,8 +123,7 @@ defmodule Rewrite.SourceTest do
         messsage = ~s'could not remove file "a.exs": no such file or directory'
 
         assert_raise SourceError, messsage, fn ->
-          Source.rm!(source) ==
-            {:error, %Rewrite.SourceError{reason: :nopath, path: nil, action: :rm}}
+          Source.rm!(source)
         end
       end)
     end
@@ -135,8 +134,7 @@ defmodule Rewrite.SourceTest do
       messsage = "could not remove file: no path found"
 
       assert_raise SourceError, messsage, fn ->
-        Source.rm!(source) ==
-          {:error, %Rewrite.SourceError{reason: :nopath, path: nil, action: :rm}}
+        Source.rm!(source)
       end
     end
   end
