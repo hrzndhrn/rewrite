@@ -19,7 +19,7 @@ defmodule Rewrite.MixProject do
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       test_ignore_filters: [~r'test/support/.*', ~r'test/fixtures/.*'],
-      xref: [exclude: [FreedomFormatter.Formatter]]
+      elixirc_options: [no_warn_undefined: [FreedomFormatter.Formatter]]
     ]
   end
 
