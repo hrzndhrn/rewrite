@@ -88,7 +88,8 @@ defmodule Rewrite.MixProject do
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.25", only: :dev, runtime: false},
-      {:excoveralls, "~> 0.10", only: :test}
+      {:excoveralls, "~> 0.10", only: :test},
+      {:spec_lint, "~> 0.1", only: [:dev, :test], runtime: false}
     ]
   end
 

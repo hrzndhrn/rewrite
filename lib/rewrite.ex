@@ -728,7 +728,7 @@ defmodule Rewrite do
   that are updated successful. The `errors` are the `errors` of `update/3`.
   """
   @spec map(t(), (Source.t() -> Source.t())) ::
-          {:ok, t()} | {:error, [{:nosource | :overwrites | :nopath, Source.t()}]}
+          {:ok, t()} | {:error, [{:error, Error.t() | UpdateError.t()}], t()}
   def map(%Rewrite{} = rewrite, fun) when is_function(fun, 1) do
     {rewrite, errors} =
       Enum.reduce(rewrite, {rewrite, []}, fn source, {rewrite, errors} ->
