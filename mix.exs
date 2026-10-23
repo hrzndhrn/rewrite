@@ -89,7 +89,12 @@ defmodule Rewrite.MixProject do
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.25", only: :dev, runtime: false},
       {:excoveralls, "~> 0.10", only: :test}
-    ]
+    ] ++
+      if Version.match?(System.version(), "~> 1.18") do
+        [{:spec_lint, "~> 0.1", only: [:dev, :test], runtime: false}]
+      else
+        []
+      end
   end
 
   defp package do
