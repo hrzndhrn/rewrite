@@ -718,7 +718,7 @@ defmodule Rewrite.DotFormatter do
   Same as `format_quoted/4`, but raises a `Rewrite.DotFormatterError` exception
   in case of failure.
   """
-  @spec format_quoted(t(), Path.t(), Macro.t(), keyword()) :: String.t()
+  @spec format_quoted!(t(), Path.t(), Macro.t(), keyword()) :: String.t()
   def format_quoted!(dot_formatter, file, quoted, opts \\ []) do
     case format_quoted(dot_formatter, file, quoted, opts) do
       {:ok, formatted} -> formatted

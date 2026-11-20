@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 - 2026/03/06
+
++ Fix specs
+
 ## 1.3.0 - 2026/03/06
 
 + Required Elixir version set to `~> 1.15`
